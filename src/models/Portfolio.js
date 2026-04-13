@@ -1,4 +1,4 @@
-// models/Portfolio.js
+// src/models/Portfolio.js
 
 /**
  * CLASS: Portfolio
@@ -19,19 +19,14 @@ export class Portfolio {
     const existingStock = this.#holdings.find(
       (s) => s.symbol === newStock.symbol,
     );
+
     if (existingStock) {
-      // Average out the purchase price and add to quantity
-      const totalCost =
-        existingStock.purchasePrice * existingStock.quantity +
-        newStock.purchasePrice * newStock.quantity;
-      existingStock.quantity += newStock.quantity;
-      // Bypassing private fields by updating via an allowed mechanism or recreating
-      existingStock.purchasePrice = totalCost / existingStock.quantity;
+      // FIX: Use the new OOP method to safely average the price and add quantity
+      existingStock.addShares(newStock.quantity, newStock.purchasePrice);
     } else {
       this.#holdings.push(newStock);
     }
   }
-  // --- Add this inside the Portfolio class in Portfolio.js ---
 
   // Deduct shares or remove stock if sold out
   sellStock(symbol, sellQuantity) {
@@ -47,15 +42,8 @@ export class Portfolio {
 
     const existingStock = this.#holdings[existingStockIndex];
 
-    // Edge Case: Selling more than we own
-    if (sellQuantity > existingStock.quantity) {
-      throw new Error(
-        `Cannot sell ${sellQuantity} shares of ${symbol}. You only own ${existingStock.quantity}.`,
-      );
-    }
-
-    // Deduct the quantity
-    existingStock.quantity -= sellQuantity;
+    // FIX: Use the new OOP method to safely reduce shares
+    existingStock.reduceShares(sellQuantity);
 
     // If we sold all our shares, remove the stock from the portfolio array entirely
     if (existingStock.quantity === 0) {

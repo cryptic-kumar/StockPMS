@@ -1,4 +1,4 @@
-// components/Dashboard.jsx
+// src/components/Dashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
 
 // Import our pure OOP classes (The Engine)
@@ -6,15 +6,17 @@ import { Portfolio, PortfolioManager } from "../models/Portfolio";
 import { TransactionQueue, UndoStack } from "../models/DataStructures";
 import { Transaction } from "../models/Transaction";
 import { EquityStock } from "../models/Stock";
+import { UserAuth } from "../models/UserAuth";
 
-// Import the new Market Data Service
+// Import the Market Data Service
 import { MarketDataService } from "../services/MarketDataService";
 
 // Import the React Child Components (The View)
 import TradingTerminal from "./TradingTerminal";
 import HoldingsTable from "./HoldingsTable";
 
-export default function Dashboard() {
+export default function Dashboard({ user }) {
+  // Notice the user prop here!
   // --------------------------------------------------------
   // 1. OOP INSTANTIATION (React refs keep these alive between renders)
   // --------------------------------------------------------
@@ -27,7 +29,7 @@ export default function Dashboard() {
   // --------------------------------------------------------
   const [holdings, setHoldings] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
-  const [isRefreshing, setIsRefreshing] = useState(false); // New state for loading button
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [metrics, setMetrics] = useState({
     invested: 0,
     currentValue: 0,
@@ -36,11 +38,28 @@ export default function Dashboard() {
   });
 
   // --------------------------------------------------------
-  // 3. THE BRIDGE: Syncing OOP data to React State
+  // 3. THE BRIDGE: Syncing OOP data to React State & LocalStorage
   // --------------------------------------------------------
   const syncUI = () => {
     const p = portfolio.current;
-    setHoldings(p.getStocks()); // Gets a safe copy of the array
+    const currentStocks = p.getStocks();
+
+    // Serialize data to bypass private field (#) restrictions in JSON
+    const serializedHoldings = currentStocks.map((stock) => ({
+      symbol: stock.symbol,
+      companyName: stock.companyName,
+      purchasePrice: stock.purchasePrice, // Uses getter
+      quantity: stock.quantity, // Uses getter
+      currentMarketPrice: stock.currentMarketPrice,
+    }));
+
+    // Save it to LocalStorage for this specific user
+    if (user) {
+      UserAuth.savePortfolio(user.email, serializedHoldings);
+    }
+
+    // Update React State
+    setHoldings(currentStocks);
     setMetrics({
       invested: p.calculateTotalInvested(),
       currentValue: p.calculateCurrentValue(),
@@ -51,25 +70,48 @@ export default function Dashboard() {
   };
 
   // --------------------------------------------------------
-  // 4. THE MARKET ENGINE (Processing the FIFO Queue)
+  // 4. HYDRATION & MARKET ENGINE
   // --------------------------------------------------------
   useEffect(() => {
+    // --- HYDRATION: Load saved data from LocalStorage ---
+    if (user) {
+      const savedData = UserAuth.getUserPortfolio(user.email);
+
+      // If they have saved data, and the current portfolio memory is empty
+      if (
+        savedData &&
+        savedData.length > 0 &&
+        portfolio.current.getStocks().length === 0
+      ) {
+        savedData.forEach((data) => {
+          // Rebuild the OOP class instances from the raw JSON data
+          const rehydratedStock = new EquityStock(
+            data.symbol,
+            data.companyName || `${data.symbol} Corp`,
+            data.purchasePrice,
+            data.quantity,
+          );
+          rehydratedStock.updateMarketPrice(data.currentMarketPrice);
+          portfolio.current.addStock(rehydratedStock);
+        });
+        syncUI(); // Force the screen to show the loaded data
+      }
+    }
+
+    // --- THE MARKET ENGINE ---
     const marketInterval = setInterval(() => {
       if (!orderQueue.current.isEmpty()) {
-        // Dequeue the oldest order (FIFO)
         const order = orderQueue.current.dequeue();
 
-        // Process the transaction
         if (order.type === "BUY") {
           const newStock = new EquityStock(
             order.stockSymbol,
-            `${order.stockSymbol} Corp`, // Mock company name
+            `${order.stockSymbol} Corp`,
             order.price,
             order.quantity,
           );
           portfolio.current.addStock(newStock);
 
-          // Push inverse action to LIFO Stack for undo functionality
           undoStack.current.push(
             new Transaction(
               order.stockSymbol,
@@ -80,14 +122,10 @@ export default function Dashboard() {
           );
         } else if (order.type === "SELL") {
           try {
-            // 1. ACTUALLY deduct the stock from the OOP portfolio
             portfolio.current.sellStock(order.stockSymbol, order.quantity);
-
             console.log(
               `Executed SELL order for ${order.quantity} of ${order.stockSymbol}`,
             );
-
-            // 2. Push inverse action to LIFO Stack for undo functionality
             undoStack.current.push(
               new Transaction(
                 order.stockSymbol,
@@ -97,20 +135,16 @@ export default function Dashboard() {
               ),
             );
           } catch (error) {
-            // 3. Handle the error if they try to sell 50 shares but only own 10
             console.error(error.message);
             alert(`Order Failed: ${error.message}`);
           }
         }
-
-        // Update the React UI to reflect the processed order
         syncUI();
       }
-    }, 2000); // Processes one order every 2 seconds
+    }, 2000);
 
-    // Cleanup interval if the component unmounts to prevent memory leaks
     return () => clearInterval(marketInterval);
-  }, []);
+  }, [user]); // Re-run if the user changes
 
   // --------------------------------------------------------
   // 5. USER ACTIONS
@@ -118,38 +152,31 @@ export default function Dashboard() {
   const handlePlaceOrder = (symbol, type, quantity, price) => {
     const newTxn = new Transaction(symbol, type, quantity, price);
     orderQueue.current.enqueue(newTxn);
-    syncUI(); // Update UI to show the order is pending in the queue
+    syncUI();
   };
 
   const handleUndoLastAction = () => {
     if (!undoStack.current.isEmpty()) {
-      const inverseTxn = undoStack.current.pop(); // LIFO
-
-      // Re-queue the inverse transaction to execute
+      const inverseTxn = undoStack.current.pop();
       orderQueue.current.enqueue(inverseTxn);
       console.log("Undoing last action via inverse transaction:", inverseTxn);
       syncUI();
     }
   };
 
-  // NEW FUNCTION: Fetch live prices for all owned stocks
   const handleRefreshMarketPrices = async () => {
     setIsRefreshing(true);
     const currentStocks = portfolio.current.getStocks();
 
-    // Loop through every stock you own and fetch the live price
     for (const stock of currentStocks) {
       try {
         const livePrice = await MarketDataService.getCurrentPrice(stock.symbol);
-
-        // Use the encapsulated OOP method you already built!
         stock.updateMarketPrice(livePrice);
       } catch (error) {
         console.error(`Failed to update ${stock.symbol}`);
       }
     }
 
-    // Once all network requests finish, sync the UI to show the new profits/losses
     syncUI();
     setIsRefreshing(false);
   };
@@ -217,7 +244,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* NEW: REFRESH MARKET PRICES BUTTON */}
+      {/* REFRESH MARKET PRICES BUTTON */}
       <div
         style={{
           marginBottom: "20px",
@@ -230,7 +257,8 @@ export default function Dashboard() {
           disabled={isRefreshing || holdings.length === 0}
           style={{
             padding: "10px 20px",
-            backgroundColor: isRefreshing ? "#ccc" : "#007bff",
+            backgroundColor:
+              isRefreshing || holdings.length === 0 ? "#ccc" : "#007bff",
             color: "white",
             border: "none",
             borderRadius: "4px",

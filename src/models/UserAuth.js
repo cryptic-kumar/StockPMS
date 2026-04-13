@@ -1,4 +1,4 @@
-// models/UserAuth.js
+// src/models/UserAuth.js
 
 export class UserAuth {
   // Simulated database key
@@ -56,5 +56,22 @@ export class UserAuth {
   static getCurrentSession() {
     const session = localStorage.getItem(this.SESSION_KEY);
     return session ? JSON.parse(session) : null;
+  }
+
+  // --- NEW: Data Persistence Methods ---
+
+  // Save the serialized portfolio array to the specific user's profile
+  static savePortfolio(email, serializedHoldings) {
+    const users = this._getUsers();
+    if (users[email]) {
+      users[email].portfolioData = serializedHoldings;
+      localStorage.setItem(this.DB_KEY, JSON.stringify(users));
+    }
+  }
+
+  // Retrieve the saved portfolio data for the user
+  static getUserPortfolio(email) {
+    const users = this._getUsers();
+    return users[email] ? users[email].portfolioData : [];
   }
 }
