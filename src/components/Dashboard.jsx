@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from "react";
 
 // Import our pure OOP classes (The Engine)
-import { Portfolio, PortfolioManager } from "../models/Portfolio";
+import { Investor } from "../models/Investor";
+import { PortfolioManager } from "../models/Portfolio";
 import { TransactionQueue, UndoStack } from "../models/DataStructures";
 import { Transaction } from "../models/Transaction";
 import { EquityStock } from "../models/Stock";
@@ -14,14 +15,25 @@ import TradingTerminal from "./TradingTerminal";
 import HoldingsTable from "./HoldingsTable";
 
 export default function Dashboard({ user }) {
-  const portfolio = useRef(new Portfolio("My Primary Portfolio"));
+  // 1. OOP INSTANTIATION
+  const investor = useRef(null);
   const orderQueue = useRef(new TransactionQueue());
   const undoStack = useRef(new UndoStack());
+
+  // Initialize the Investor class once when the user loads
+  if (!investor.current && user) {
+    investor.current = new Investor(user.email);
+  }
+
+  // 2. REACT STATE
+  const [activeTab, setActiveTab] = useState("");
+  const [portfolioList, setPortfolioList] = useState([]);
+  const [newPortfolioName, setNewPortfolioName] = useState("");
 
   const [holdings, setHoldings] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [transactionHistory, setTransactionHistory] = useState([]);
-  const [alerts, setAlerts] = useState([]); // New state for Gain/Loss Alerts
+  const [alerts, setAlerts] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [metrics, setMetrics] = useState({
     invested: 0,
@@ -30,121 +42,147 @@ export default function Dashboard({ user }) {
     riskLevel: "N/A",
   });
 
-  const syncUI = () => {
-    const p = portfolio.current;
-    const currentStocks = p.getStocks();
+  // 3. THE BRIDGE: Syncing OOP data to React State & LocalStorage
+  const syncUI = (overrideTab = null) => {
+    if (!investor.current) return;
 
-    // 1. Check for Gain/Loss Alerts
+    const allPorts = investor.current.getAllPortfolios();
+    setPortfolioList(allPorts.map((p) => p.name));
+
+    const currentTab =
+      overrideTab ||
+      activeTab ||
+      (allPorts.length > 0 ? allPorts[0].name : null);
+    if (!currentTab) return;
+
+    const activeP = investor.current.getPortfolio(currentTab);
+    if (!activeP) return;
+
+    // A. Check for Gain/Loss Alerts on the active portfolio
     const systemAlerts = [];
-    currentStocks.forEach((stock) => {
-      const alertMsg = PortfolioManager.checkLossAlerts(stock, -5); // Triggers if profit drops to -5%
+    activeP.getStocks().forEach((stock) => {
+      const alertMsg = PortfolioManager.checkLossAlerts(stock, -5);
       if (alertMsg) systemAlerts.push(alertMsg);
     });
     setAlerts(systemAlerts);
 
-    // 2. Serialize data for LocalStorage (including our new transaction history)
-    const serializedHoldings = currentStocks.map((stock) => ({
-      symbol: stock.symbol,
-      companyName: stock.companyName,
-      purchasePrice: stock.purchasePrice,
-      quantity: stock.quantity,
-      currentMarketPrice: stock.currentMarketPrice,
-    }));
-
-    const serializedHistory = p.getTransactionHistory();
+    // B. Serialize ALL portfolios for storage
+    const serializedData = {};
+    allPorts.forEach((p) => {
+      serializedData[p.name] = {
+        holdings: p.getStocks().map((s) => ({
+          symbol: s.symbol,
+          companyName: s.companyName,
+          purchasePrice: s.purchasePrice,
+          quantity: s.quantity,
+          currentMarketPrice: s.currentMarketPrice,
+        })),
+        history: p.getTransactionHistory(),
+      };
+    });
 
     if (user) {
-      UserAuth.savePortfolio(user.email, {
-        holdings: serializedHoldings,
-        history: serializedHistory,
-      });
+      UserAuth.savePortfolio(user.email, serializedData);
     }
 
-    // 3. Update UI State
-    setHoldings(currentStocks);
-    setTransactionHistory(p.sortTransactionsByDate(true)); // Display newest first
+    // C. Update UI State strictly for the ACTIVE tab
+    setHoldings(activeP.getStocks());
+    setTransactionHistory(activeP.sortTransactionsByDate(true));
     setMetrics({
-      invested: p.calculateTotalInvested(),
-      currentValue: p.calculateCurrentValue(),
-      profitLossPercent: p.calculateOverallProfitLoss(),
-      riskLevel: PortfolioManager.analyzeRiskLevel(p),
+      invested: activeP.calculateTotalInvested(),
+      currentValue: activeP.calculateCurrentValue(),
+      profitLossPercent: activeP.calculateOverallProfitLoss(),
+      riskLevel: PortfolioManager.analyzeRiskLevel(activeP),
     });
     setPendingOrders(orderQueue.current.getQueueState());
   };
 
+  // 4. HYDRATION (Load saved data on mount)
   useEffect(() => {
-    // --- HYDRATION ---
-    if (user) {
+    if (user && investor.current.getAllPortfolios().length === 0) {
       const savedData = UserAuth.getUserPortfolio(user.email);
 
+      // Check if they have multi-portfolio data saved
       if (
         savedData &&
-        savedData.holdings &&
-        portfolio.current.getStocks().length === 0
+        !Array.isArray(savedData) &&
+        Object.keys(savedData).length > 0
       ) {
-        savedData.holdings.forEach((data) => {
-          const rehydratedStock = new EquityStock(
-            data.symbol,
-            data.companyName || `${data.symbol} Corp`,
-            data.purchasePrice,
-            data.quantity,
-          );
-          rehydratedStock.updateMarketPrice(data.currentMarketPrice);
-          portfolio.current.addStock(rehydratedStock);
-        });
-
-        // Rehydrate the transaction history
-        if (savedData.history) {
-          savedData.history.forEach((txn) =>
-            portfolio.current.addTransactionRecord(txn),
-          );
+        for (const [pName, pData] of Object.entries(savedData)) {
+          const p = investor.current.createPortfolio(pName);
+          if (pData.holdings) {
+            pData.holdings.forEach((data) => {
+              const rehydratedStock = new EquityStock(
+                data.symbol,
+                data.companyName || `${data.symbol} Corp`,
+                data.purchasePrice,
+                data.quantity,
+              );
+              rehydratedStock.updateMarketPrice(data.currentMarketPrice);
+              p.addStock(rehydratedStock);
+            });
+          }
+          if (pData.history) {
+            pData.history.forEach((tx) => p.addTransactionRecord(tx));
+          }
         }
-        syncUI();
+        const firstPortfolioName = Object.keys(savedData)[0];
+        setActiveTab(firstPortfolioName);
+        syncUI(firstPortfolioName);
+      } else {
+        // Brand new user
+        investor.current.createPortfolio("My Primary Portfolio");
+        setActiveTab("My Primary Portfolio");
+        syncUI("My Primary Portfolio");
       }
     }
+  }, [user]);
 
-    // --- MARKET ENGINE ---
+  // 5. THE MARKET ENGINE
+  useEffect(() => {
     const marketInterval = setInterval(() => {
       if (!orderQueue.current.isEmpty()) {
         const order = orderQueue.current.dequeue();
 
-        if (order.type === "BUY") {
-          const newStock = new EquityStock(
-            order.stockSymbol,
-            `${order.stockSymbol} Corp`,
-            order.price,
-            order.quantity,
-          );
-          portfolio.current.addStock(newStock);
+        // Find the specific portfolio this order was destined for
+        const targetP = investor.current.getPortfolio(order.targetPortfolio);
 
-          // NEW: Save the record to the ledger
-          portfolio.current.addTransactionRecord(order);
+        if (targetP) {
+          if (order.type === "BUY") {
+            const newStock = new EquityStock(
+              order.stockSymbol,
+              `${order.stockSymbol} Corp`,
+              order.price,
+              order.quantity,
+            );
+            targetP.addStock(newStock);
+            targetP.addTransactionRecord(order);
 
-          undoStack.current.push(
-            new Transaction(
+            // Queue inverse for undo, attaching the correct portfolio context
+            const inverseTxn = new Transaction(
               order.stockSymbol,
               "SELL",
               order.quantity,
               order.price,
-            ),
-          );
-        } else if (order.type === "SELL") {
-          try {
-            portfolio.current.sellStock(order.stockSymbol, order.quantity);
+            );
+            inverseTxn.targetPortfolio = order.targetPortfolio;
+            undoStack.current.push(inverseTxn);
+          } else if (order.type === "SELL") {
+            try {
+              targetP.sellStock(order.stockSymbol, order.quantity);
+              targetP.addTransactionRecord(order);
 
-            // NEW: Save the record to the ledger
-            portfolio.current.addTransactionRecord(order);
-
-            undoStack.current.push(
-              new Transaction(
+              const inverseTxn = new Transaction(
                 order.stockSymbol,
                 "BUY",
                 order.quantity,
                 order.price,
-              ),
-            );
-          } catch (error) {
-            alert(`Order Failed: ${error.message}`);
+              );
+              inverseTxn.targetPortfolio = order.targetPortfolio;
+              undoStack.current.push(inverseTxn);
+            } catch (error) {
+              alert(`Order Failed: ${error.message}`);
+            }
           }
         }
         syncUI();
@@ -152,11 +190,24 @@ export default function Dashboard({ user }) {
     }, 2000);
 
     return () => clearInterval(marketInterval);
-  }, [user]);
+  }, []);
 
-  // ... (handlePlaceOrder, handleUndoLastAction, handleRefreshMarketPrices remain exactly the same) ...
+  // 6. USER ACTIONS
+  const handleCreatePortfolio = () => {
+    if (!newPortfolioName.trim()) return;
+    try {
+      investor.current.createPortfolio(newPortfolioName.trim());
+      setActiveTab(newPortfolioName.trim());
+      setNewPortfolioName("");
+      syncUI(newPortfolioName.trim());
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
   const handlePlaceOrder = (symbol, type, quantity, price) => {
     const newTxn = new Transaction(symbol, type, quantity, price);
+    newTxn.targetPortfolio = activeTab; // Stamp the order with the current portfolio
     orderQueue.current.enqueue(newTxn);
     syncUI();
   };
@@ -171,8 +222,8 @@ export default function Dashboard({ user }) {
 
   const handleRefreshMarketPrices = async () => {
     setIsRefreshing(true);
-    const currentStocks = portfolio.current.getStocks();
-    for (const stock of currentStocks) {
+    const activeP = investor.current.getPortfolio(activeTab);
+    for (const stock of activeP.getStocks()) {
       try {
         const livePrice = await MarketDataService.getCurrentPrice(stock.symbol);
         stock.updateMarketPrice(livePrice);
@@ -184,6 +235,7 @@ export default function Dashboard({ user }) {
     setIsRefreshing(false);
   };
 
+  // 7. RENDER THE VIEW
   return (
     <div
       className="dashboard-container"
@@ -194,9 +246,68 @@ export default function Dashboard({ user }) {
         margin: "0 auto",
       }}
     >
-      <h1 style={{ textAlign: "center", marginBottom: "30px" }}>
-        Stock Portfolio Management System
-      </h1>
+      {/* MULTI-PORTFOLIO TABS UI */}
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          marginBottom: "30px",
+          borderBottom: "2px solid #ccc",
+          paddingBottom: "15px",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        {portfolioList.map((name) => (
+          <button
+            key={name}
+            onClick={() => {
+              setActiveTab(name);
+              syncUI(name);
+            }}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: activeTab === name ? "#1a202c" : "#e2e8f0",
+              color: activeTab === name ? "white" : "#1a202c",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              transition: "background 0.2s",
+            }}
+          >
+            {name}
+          </button>
+        ))}
+
+        <div style={{ display: "flex", gap: "8px", marginLeft: "auto" }}>
+          <input
+            type="text"
+            placeholder="New Portfolio Name"
+            value={newPortfolioName}
+            onChange={(e) => setNewPortfolioName(e.target.value)}
+            style={{
+              padding: "10px",
+              borderRadius: "4px",
+              border: "1px solid #ccc",
+            }}
+          />
+          <button
+            onClick={handleCreatePortfolio}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: "#4CAF50",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            + Add Portfolio
+          </button>
+        </div>
+      </div>
 
       {/* ALERTS SECTION */}
       {alerts.length > 0 && (
@@ -210,7 +321,7 @@ export default function Dashboard({ user }) {
             border: "1px solid #ffeeba",
           }}
         >
-          <strong>⚠️ System Alerts:</strong>
+          <strong>⚠️ System Alerts for {activeTab}:</strong>
           <ul style={{ margin: "10px 0 0 0", paddingLeft: "20px" }}>
             {alerts.map((alert, index) => (
               <li key={index}>{alert}</li>
@@ -306,13 +417,15 @@ export default function Dashboard({ user }) {
           pendingOrders={pendingOrders}
           isUndoDisabled={undoStack.current.isEmpty()}
         />
-        <HoldingsTable
-          holdings={holdings}
-          portfolioInstance={portfolio.current}
-        />
+        {investor.current && (
+          <HoldingsTable
+            holdings={holdings}
+            portfolioInstance={investor.current.getPortfolio(activeTab)}
+          />
+        )}
       </div>
 
-      {/* NEW: TRANSACTION LEDGER */}
+      {/* TRANSACTION LEDGER */}
       <div
         style={{
           border: "1px solid #ccc",
@@ -321,9 +434,11 @@ export default function Dashboard({ user }) {
           backgroundColor: "#fff",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Transaction Ledger (Sorted by Newest)</h3>
+        <h3 style={{ marginTop: 0 }}>Transaction Ledger ({activeTab})</h3>
         {transactionHistory.length === 0 ? (
-          <p style={{ color: "#666" }}>No transactions executed yet.</p>
+          <p style={{ color: "#666" }}>
+            No transactions executed in this portfolio yet.
+          </p>
         ) : (
           <table
             style={{
