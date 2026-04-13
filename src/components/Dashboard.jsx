@@ -7,8 +7,6 @@ import { TransactionQueue, UndoStack } from "../models/DataStructures";
 import { Transaction } from "../models/Transaction";
 import { EquityStock } from "../models/Stock";
 import { UserAuth } from "../models/UserAuth";
-
-// Import the Market Data Service
 import { MarketDataService } from "../services/MarketDataService";
 
 // Import the React Child Components (The View)
@@ -16,19 +14,14 @@ import TradingTerminal from "./TradingTerminal";
 import HoldingsTable from "./HoldingsTable";
 
 export default function Dashboard({ user }) {
-  // Notice the user prop here!
-  // --------------------------------------------------------
-  // 1. OOP INSTANTIATION (React refs keep these alive between renders)
-  // --------------------------------------------------------
   const portfolio = useRef(new Portfolio("My Primary Portfolio"));
   const orderQueue = useRef(new TransactionQueue());
   const undoStack = useRef(new UndoStack());
 
-  // --------------------------------------------------------
-  // 2. REACT STATE (Forcing the UI to update when OOP data changes)
-  // --------------------------------------------------------
   const [holdings, setHoldings] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
+  const [transactionHistory, setTransactionHistory] = useState([]);
+  const [alerts, setAlerts] = useState([]); // New state for Gain/Loss Alerts
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [metrics, setMetrics] = useState({
     invested: 0,
@@ -37,29 +30,39 @@ export default function Dashboard({ user }) {
     riskLevel: "N/A",
   });
 
-  // --------------------------------------------------------
-  // 3. THE BRIDGE: Syncing OOP data to React State & LocalStorage
-  // --------------------------------------------------------
   const syncUI = () => {
     const p = portfolio.current;
     const currentStocks = p.getStocks();
 
-    // Serialize data to bypass private field (#) restrictions in JSON
+    // 1. Check for Gain/Loss Alerts
+    const systemAlerts = [];
+    currentStocks.forEach((stock) => {
+      const alertMsg = PortfolioManager.checkLossAlerts(stock, -5); // Triggers if profit drops to -5%
+      if (alertMsg) systemAlerts.push(alertMsg);
+    });
+    setAlerts(systemAlerts);
+
+    // 2. Serialize data for LocalStorage (including our new transaction history)
     const serializedHoldings = currentStocks.map((stock) => ({
       symbol: stock.symbol,
       companyName: stock.companyName,
-      purchasePrice: stock.purchasePrice, // Uses getter
-      quantity: stock.quantity, // Uses getter
+      purchasePrice: stock.purchasePrice,
+      quantity: stock.quantity,
       currentMarketPrice: stock.currentMarketPrice,
     }));
 
-    // Save it to LocalStorage for this specific user
+    const serializedHistory = p.getTransactionHistory();
+
     if (user) {
-      UserAuth.savePortfolio(user.email, serializedHoldings);
+      UserAuth.savePortfolio(user.email, {
+        holdings: serializedHoldings,
+        history: serializedHistory,
+      });
     }
 
-    // Update React State
+    // 3. Update UI State
     setHoldings(currentStocks);
+    setTransactionHistory(p.sortTransactionsByDate(true)); // Display newest first
     setMetrics({
       invested: p.calculateTotalInvested(),
       currentValue: p.calculateCurrentValue(),
@@ -69,22 +72,17 @@ export default function Dashboard({ user }) {
     setPendingOrders(orderQueue.current.getQueueState());
   };
 
-  // --------------------------------------------------------
-  // 4. HYDRATION & MARKET ENGINE
-  // --------------------------------------------------------
   useEffect(() => {
-    // --- HYDRATION: Load saved data from LocalStorage ---
+    // --- HYDRATION ---
     if (user) {
       const savedData = UserAuth.getUserPortfolio(user.email);
 
-      // If they have saved data, and the current portfolio memory is empty
       if (
         savedData &&
-        savedData.length > 0 &&
+        savedData.holdings &&
         portfolio.current.getStocks().length === 0
       ) {
-        savedData.forEach((data) => {
-          // Rebuild the OOP class instances from the raw JSON data
+        savedData.holdings.forEach((data) => {
           const rehydratedStock = new EquityStock(
             data.symbol,
             data.companyName || `${data.symbol} Corp`,
@@ -94,11 +92,18 @@ export default function Dashboard({ user }) {
           rehydratedStock.updateMarketPrice(data.currentMarketPrice);
           portfolio.current.addStock(rehydratedStock);
         });
-        syncUI(); // Force the screen to show the loaded data
+
+        // Rehydrate the transaction history
+        if (savedData.history) {
+          savedData.history.forEach((txn) =>
+            portfolio.current.addTransactionRecord(txn),
+          );
+        }
+        syncUI();
       }
     }
 
-    // --- THE MARKET ENGINE ---
+    // --- MARKET ENGINE ---
     const marketInterval = setInterval(() => {
       if (!orderQueue.current.isEmpty()) {
         const order = orderQueue.current.dequeue();
@@ -112,6 +117,9 @@ export default function Dashboard({ user }) {
           );
           portfolio.current.addStock(newStock);
 
+          // NEW: Save the record to the ledger
+          portfolio.current.addTransactionRecord(order);
+
           undoStack.current.push(
             new Transaction(
               order.stockSymbol,
@@ -123,9 +131,10 @@ export default function Dashboard({ user }) {
         } else if (order.type === "SELL") {
           try {
             portfolio.current.sellStock(order.stockSymbol, order.quantity);
-            console.log(
-              `Executed SELL order for ${order.quantity} of ${order.stockSymbol}`,
-            );
+
+            // NEW: Save the record to the ledger
+            portfolio.current.addTransactionRecord(order);
+
             undoStack.current.push(
               new Transaction(
                 order.stockSymbol,
@@ -135,7 +144,6 @@ export default function Dashboard({ user }) {
               ),
             );
           } catch (error) {
-            console.error(error.message);
             alert(`Order Failed: ${error.message}`);
           }
         }
@@ -144,11 +152,9 @@ export default function Dashboard({ user }) {
     }, 2000);
 
     return () => clearInterval(marketInterval);
-  }, [user]); // Re-run if the user changes
+  }, [user]);
 
-  // --------------------------------------------------------
-  // 5. USER ACTIONS
-  // --------------------------------------------------------
+  // ... (handlePlaceOrder, handleUndoLastAction, handleRefreshMarketPrices remain exactly the same) ...
   const handlePlaceOrder = (symbol, type, quantity, price) => {
     const newTxn = new Transaction(symbol, type, quantity, price);
     orderQueue.current.enqueue(newTxn);
@@ -159,7 +165,6 @@ export default function Dashboard({ user }) {
     if (!undoStack.current.isEmpty()) {
       const inverseTxn = undoStack.current.pop();
       orderQueue.current.enqueue(inverseTxn);
-      console.log("Undoing last action via inverse transaction:", inverseTxn);
       syncUI();
     }
   };
@@ -167,7 +172,6 @@ export default function Dashboard({ user }) {
   const handleRefreshMarketPrices = async () => {
     setIsRefreshing(true);
     const currentStocks = portfolio.current.getStocks();
-
     for (const stock of currentStocks) {
       try {
         const livePrice = await MarketDataService.getCurrentPrice(stock.symbol);
@@ -176,14 +180,10 @@ export default function Dashboard({ user }) {
         console.error(`Failed to update ${stock.symbol}`);
       }
     }
-
     syncUI();
     setIsRefreshing(false);
   };
 
-  // --------------------------------------------------------
-  // 6. RENDER THE VIEW
-  // --------------------------------------------------------
   return (
     <div
       className="dashboard-container"
@@ -197,6 +197,27 @@ export default function Dashboard({ user }) {
       <h1 style={{ textAlign: "center", marginBottom: "30px" }}>
         Stock Portfolio Management System
       </h1>
+
+      {/* ALERTS SECTION */}
+      {alerts.length > 0 && (
+        <div
+          style={{
+            backgroundColor: "#fff3cd",
+            color: "#856404",
+            padding: "15px",
+            borderRadius: "4px",
+            marginBottom: "20px",
+            border: "1px solid #ffeeba",
+          }}
+        >
+          <strong>⚠️ System Alerts:</strong>
+          <ul style={{ margin: "10px 0 0 0", paddingLeft: "20px" }}>
+            {alerts.map((alert, index) => (
+              <li key={index}>{alert}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* PORTFOLIO SUMMARY WIDGET */}
       <div
@@ -244,7 +265,6 @@ export default function Dashboard({ user }) {
         </div>
       </div>
 
-      {/* REFRESH MARKET PRICES BUTTON */}
       <div
         style={{
           marginBottom: "20px",
@@ -272,18 +292,84 @@ export default function Dashboard({ user }) {
       </div>
 
       {/* MAIN DASHBOARD LAYOUT */}
-      <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "20px",
+          alignItems: "flex-start",
+          marginBottom: "30px",
+        }}
+      >
         <TradingTerminal
           onPlaceOrder={handlePlaceOrder}
           onUndo={handleUndoLastAction}
           pendingOrders={pendingOrders}
           isUndoDisabled={undoStack.current.isEmpty()}
         />
-
         <HoldingsTable
           holdings={holdings}
           portfolioInstance={portfolio.current}
         />
+      </div>
+
+      {/* NEW: TRANSACTION LEDGER */}
+      <div
+        style={{
+          border: "1px solid #ccc",
+          padding: "20px",
+          borderRadius: "8px",
+          backgroundColor: "#fff",
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Transaction Ledger (Sorted by Newest)</h3>
+        {transactionHistory.length === 0 ? (
+          <p style={{ color: "#666" }}>No transactions executed yet.</p>
+        ) : (
+          <table
+            style={{
+              width: "100%",
+              textAlign: "left",
+              borderCollapse: "collapse",
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: "2px solid #ddd" }}>
+                <th style={{ padding: "10px" }}>Date & Time</th>
+                <th>Transaction ID</th>
+                <th>Type</th>
+                <th>Symbol</th>
+                <th>Quantity</th>
+                <th>Execution Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactionHistory.map((txn) => (
+                <tr
+                  key={txn.transactionId}
+                  style={{ borderBottom: "1px solid #eee" }}
+                >
+                  <td style={{ padding: "10px" }}>
+                    {new Date(txn.date).toLocaleString()}
+                  </td>
+                  <td style={{ color: "#666", fontSize: "12px" }}>
+                    {txn.transactionId}
+                  </td>
+                  <td
+                    style={{
+                      fontWeight: "bold",
+                      color: txn.type === "BUY" ? "green" : "red",
+                    }}
+                  >
+                    {txn.type}
+                  </td>
+                  <td style={{ fontWeight: "bold" }}>{txn.stockSymbol}</td>
+                  <td>{txn.quantity}</td>
+                  <td>${txn.price.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

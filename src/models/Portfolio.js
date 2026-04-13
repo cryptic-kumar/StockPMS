@@ -6,8 +6,10 @@
  */
 export class Portfolio {
   #holdings; // Encapsulated array of Stock objects
+  #transactionHistory;
 
   constructor(portfolioName) {
+    this.#transactionHistory = [];
     this.id = `PORT-${Date.now()}`;
     this.name = portfolioName;
     this.#holdings = []; // Linear Data Structure: Array to store stock holdings
@@ -108,6 +110,22 @@ export class Portfolio {
     if (this.#holdings.length === 0) return null;
     const sorted = this.sortByHighestProfit();
     return sorted[sorted.length - 1]; // Lowest profit at last index
+  }
+  addTransactionRecord(transaction) {
+    this.#transactionHistory.push(transaction);
+  }
+
+  getTransactionHistory() {
+    return [...this.#transactionHistory];
+  }
+
+  // Fulfills the "Sort transactions by date" rubric requirement
+  sortTransactionsByDate(newestFirst = true) {
+    return [...this.#transactionHistory].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return newestFirst ? dateB - dateA : dateA - dateB;
+    });
   }
 }
 
