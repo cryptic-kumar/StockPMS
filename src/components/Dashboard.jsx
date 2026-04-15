@@ -26,9 +26,9 @@ export default function Dashboard({ user }) {
   const orderQueue = useRef(new TransactionQueue());
   const undoStack = useRef(new UndoStack());
 
-  // Initialize the Investor class once when the user loads
-  if (!investor.current && user) {
-    investor.current = new Investor(user.email);
+  // Initialize the Investor class once when the user loads (using UID)
+  if (!investor.current && user && user.uid) {
+    investor.current = new Investor(user.uid, user.phone);
   }
 
   // 2. REACT STATE
@@ -48,7 +48,7 @@ export default function Dashboard({ user }) {
     riskLevel: "N/A",
   });
 
-  // 3. THE BRIDGE: Syncing OOP data to React State & LocalStorage
+  // 3. THE BRIDGE: Syncing OOP data to React State & Cloud Database
   const syncUI = (overrideTab = null) => {
     if (!investor.current) return;
 
@@ -72,7 +72,7 @@ export default function Dashboard({ user }) {
     });
     setAlerts(systemAlerts);
 
-    // B. Serialize ALL portfolios for storage
+    // B. Serialize ALL portfolios for Firebase Storage
     const serializedData = {};
     allPorts.forEach((p) => {
       serializedData[p.name] = {
@@ -83,12 +83,21 @@ export default function Dashboard({ user }) {
           quantity: s.quantity,
           currentMarketPrice: s.currentMarketPrice,
         })),
-        history: p.getTransactionHistory(),
+        // Map the custom Transaction class into a plain object so Firebase accepts it
+        history: p.getTransactionHistory().map((tx) => ({
+          transactionId: tx.transactionId,
+          stockSymbol: tx.stockSymbol,
+          type: tx.type,
+          quantity: tx.quantity,
+          price: tx.price,
+          date: tx.date,
+        })),
       };
     });
 
-    if (user) {
-      UserAuth.savePortfolio(user.email, serializedData);
+    // Send to Firebase Cloud Database (Fire and Forget)
+    if (user && user.uid) {
+      UserAuth.savePortfolio(user.uid, serializedData);
     }
 
     // C. Update UI State strictly for the ACTIVE tab
@@ -103,54 +112,75 @@ export default function Dashboard({ user }) {
     setPendingOrders(orderQueue.current.getQueueState());
   };
 
-  // 4. HYDRATION (Load saved data on mount)
+  // 4. HYDRATION (Load saved data on mount from Firebase)
   useEffect(() => {
-    if (user && investor.current.getAllPortfolios().length === 0) {
-      const savedData = UserAuth.getUserPortfolio(user.email);
+    const loadCloudData = async () => {
+      if (user && user.uid && investor.current) {
+        const savedData = await UserAuth.getUserPortfolio(user.uid);
 
-      // Check if they have multi-portfolio data saved
-      if (
-        savedData &&
-        !Array.isArray(savedData) &&
-        Object.keys(savedData).length > 0
-      ) {
-        for (const [pName, pData] of Object.entries(savedData)) {
-          const p = investor.current.createPortfolio(pName);
-          if (pData.holdings) {
-            pData.holdings.forEach((data) => {
-              const rehydratedStock = new EquityStock(
-                data.symbol,
-                data.companyName || `${data.symbol} Corp`,
-                data.purchasePrice,
-                data.quantity,
-              );
-              rehydratedStock.updateMarketPrice(data.currentMarketPrice);
-              p.addStock(rehydratedStock);
-            });
+        // Check if they have multi-portfolio data saved
+        if (
+          savedData &&
+          !Array.isArray(savedData) &&
+          Object.keys(savedData).length > 0
+        ) {
+          for (const [pName, pData] of Object.entries(savedData)) {
+            // Check if portfolio exists to prevent React StrictMode double-mounting crash
+            let p = investor.current.getPortfolio(pName);
+
+            if (!p) {
+              p = investor.current.createPortfolio(pName);
+
+              if (pData.holdings) {
+                pData.holdings.forEach((data) => {
+                  const rehydratedStock = new EquityStock(
+                    data.symbol,
+                    data.companyName || `${data.symbol} Corp`,
+                    data.purchasePrice,
+                    data.quantity,
+                  );
+                  rehydratedStock.updateMarketPrice(data.currentMarketPrice);
+                  p.addStock(rehydratedStock);
+                });
+              }
+              if (pData.history) {
+                // Convert plain JSON back into Transaction class objects
+                pData.history.forEach((txData) => {
+                  const rehydratedTxn = new Transaction(
+                    txData.stockSymbol,
+                    txData.type,
+                    txData.quantity,
+                    txData.price,
+                  );
+                  rehydratedTxn.date = txData.date;
+                  rehydratedTxn.transactionId = txData.transactionId;
+                  p.addTransactionRecord(rehydratedTxn);
+                });
+              }
+            }
           }
-          if (pData.history) {
-            pData.history.forEach((tx) => p.addTransactionRecord(tx));
+          const firstPortfolioName = Object.keys(savedData)[0];
+          setActiveTab(firstPortfolioName);
+          syncUI(firstPortfolioName);
+        } else {
+          // Brand new user: Check if Primary exists before creating
+          if (!investor.current.getPortfolio("My Primary Portfolio")) {
+            investor.current.createPortfolio("My Primary Portfolio");
           }
+          setActiveTab("My Primary Portfolio");
+          syncUI("My Primary Portfolio");
         }
-        const firstPortfolioName = Object.keys(savedData)[0];
-        setActiveTab(firstPortfolioName);
-        syncUI(firstPortfolioName);
-      } else {
-        // Brand new user
-        investor.current.createPortfolio("My Primary Portfolio");
-        setActiveTab("My Primary Portfolio");
-        syncUI("My Primary Portfolio");
       }
-    }
+    };
+    loadCloudData();
   }, [user]);
 
-  // 5. THE MARKET ENGINE
+  // 5. THE MARKET ENGINE (Queue processing)
   useEffect(() => {
     const marketInterval = setInterval(() => {
       if (!orderQueue.current.isEmpty()) {
         const order = orderQueue.current.dequeue();
 
-        // Find the specific portfolio this order was destined for
         const targetP = investor.current.getPortfolio(order.targetPortfolio);
 
         if (targetP) {
@@ -164,7 +194,6 @@ export default function Dashboard({ user }) {
             targetP.addStock(newStock);
             targetP.addTransactionRecord(order);
 
-            // Queue inverse for undo, attaching the correct portfolio context
             const inverseTxn = new Transaction(
               order.stockSymbol,
               "SELL",
@@ -223,7 +252,7 @@ export default function Dashboard({ user }) {
     ) {
       try {
         investor.current.deletePortfolio(name);
-        setActiveTab("My Primary Portfolio"); // Safely route back to primary
+        setActiveTab("My Primary Portfolio");
         syncUI("My Primary Portfolio");
       } catch (error) {
         alert(error.message);
@@ -233,7 +262,7 @@ export default function Dashboard({ user }) {
 
   const handlePlaceOrder = (symbol, type, quantity, price) => {
     const newTxn = new Transaction(symbol, type, quantity, price);
-    newTxn.targetPortfolio = activeTab; // Stamp the order with the current portfolio
+    newTxn.targetPortfolio = activeTab;
     orderQueue.current.enqueue(newTxn);
     syncUI();
   };
@@ -259,6 +288,50 @@ export default function Dashboard({ user }) {
     }
     syncUI();
     setIsRefreshing(false);
+  };
+
+  const handleExportCSV = () => {
+    if (!investor.current) return;
+    const activeP = investor.current.getPortfolio(activeTab);
+    if (!activeP) return;
+
+    const history = activeP.getTransactionHistory();
+    const stocks = activeP.getStocks();
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += `Portfolio Report: ${activeTab}\n`;
+    csvContent += `Generated On: ${new Date().toLocaleString()}\n\n`;
+
+    csvContent += "--- SUMMARY METRICS ---\n";
+    csvContent += `Total Invested,${metrics.invested.toFixed(2)}\n`;
+    csvContent += `Current Value,${metrics.currentValue.toFixed(2)}\n`;
+    csvContent += `Overall P/L (%),${metrics.profitLossPercent}%\n`;
+    csvContent += `Risk Level,${metrics.riskLevel}\n\n`;
+
+    csvContent += "--- CURRENT HOLDINGS ---\n";
+    csvContent += "Symbol,Shares,Avg Cost,Current Price\n";
+    stocks.forEach((stock) => {
+      csvContent += `${stock.symbol},${stock.quantity},${stock.purchasePrice.toFixed(2)},${stock.currentMarketPrice.toFixed(2)}\n`;
+    });
+    csvContent += "\n";
+
+    csvContent += "--- TRANSACTION LEDGER ---\n";
+    csvContent += "Date,Type,Symbol,Quantity,Execution Price\n";
+    history.forEach((txn) => {
+      const dateStr = new Date(txn.date).toLocaleString().replace(/,/g, "");
+      csvContent += `${dateStr},${txn.type},${txn.stockSymbol},${txn.quantity},${txn.price.toFixed(2)}\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `${activeTab.replace(/\s+/g, "_")}_Report.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // 7. RENDER THE VIEW
@@ -311,7 +384,6 @@ export default function Dashboard({ user }) {
             >
               {name}
             </button>
-            {/* DELETE BUTTON (Hidden for Primary Portfolio) */}
             {name !== "My Primary Portfolio" && (
               <button
                 onClick={() => handleDeletePortfolio(name)}
@@ -432,8 +504,23 @@ export default function Dashboard({ user }) {
           marginBottom: "20px",
           display: "flex",
           justifyContent: "flex-end",
+          gap: "10px",
         }}
       >
+        <button
+          onClick={handleExportCSV}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: "#10b981",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+        >
+          📥 Download CSV Report
+        </button>
         <button
           onClick={handleRefreshMarketPrices}
           disabled={isRefreshing || holdings.length === 0}

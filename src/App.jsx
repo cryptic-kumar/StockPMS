@@ -1,123 +1,100 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
-
-// Import our UI Components
 import AuthScreen from "./components/AuthScreen";
 import Dashboard from "./components/Dashboard";
 
-// Import our OOP Authentication Engine
-import { UserAuth } from "./models/UserAuth";
+// Import Firebase authentication tools
+import { auth } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  // When the app loads, check localStorage to see if a session is already active
   useEffect(() => {
-    const session = UserAuth.getCurrentSession();
-    if (session) {
-      setUser(session);
-    }
-    setIsCheckingSession(false);
+    // This Firebase listener automatically checks for active sessions
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser({ uid: currentUser.uid, phone: currentUser.phoneNumber });
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    // Cleanup the listener when the app unmounts
+    return () => unsubscribe();
   }, []);
 
-  const handleLogin = (userData) => {
-    setUser(userData);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
   };
 
-  const handleLogout = () => {
-    UserAuth.logout();
-    setUser(null);
-  };
-
-  // Prevent screen flickering while checking localStorage
-  if (isCheckingSession) {
+  if (loading) {
     return (
       <div
         style={{
           display: "flex",
           justifyContent: "center",
-          marginTop: "100px",
-          fontFamily: "Arial",
+          alignItems: "center",
+          height: "100vh",
+          fontFamily: "sans-serif",
         }}
       >
-        <h2>Loading System Environment...</h2>
+        Loading Secure Session...
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        margin: 0,
-        padding: 0,
-        fontFamily: "Arial, sans-serif",
-        backgroundColor: "#eef2f5",
-        minHeight: "100vh",
-      }}
-    >
-      {/* Conditional Rendering: Show Dashboard if logged in, else show Login Screen */}
-      {user ? (
-        <div>
-          {/* Global Navigation Bar */}
-          <div
-            style={{
-              backgroundColor: "#1a202c",
-              padding: "15px 40px",
-              color: "white",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-            }}
-          >
-            <div
+    <div>
+      {/* Top Navigation Bar */}
+      {user && (
+        <nav
+          style={{
+            padding: "15px 20px",
+            backgroundColor: "#1a202c",
+            color: "white",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontFamily: "Arial, sans-serif",
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: "18px", letterSpacing: "1px" }}>
+            SPMS Enterprise
+          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+            <span style={{ fontSize: "14px", color: "#cbd5e1" }}>
+              Logged in: {user.phone}
+            </span>
+            <button
+              onClick={handleLogout}
               style={{
+                padding: "8px 15px",
+                backgroundColor: "#e53e3e",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
                 fontWeight: "bold",
-                fontSize: "20px",
-                letterSpacing: "1px",
               }}
             >
-              ProPortfolio<span style={{ color: "#4CAF50" }}>.Sys</span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-              <span style={{ fontSize: "14px", color: "#a0aec0" }}>
-                Investor:{" "}
-                <strong style={{ color: "white" }}>{user.email}</strong>
-              </span>
-              <button
-                onClick={handleLogout}
-                style={{
-                  padding: "8px 16px",
-                  cursor: "pointer",
-                  backgroundColor: "#e53e3e",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  fontWeight: "bold",
-                  transition: "background 0.2s",
-                }}
-                onMouseOver={(e) =>
-                  (e.target.style.backgroundColor = "#c53030")
-                }
-                onMouseOut={(e) => (e.target.style.backgroundColor = "#e53e3e")}
-              >
-                Secure Logout
-              </button>
-            </div>
+              Logout
+            </button>
           </div>
+        </nav>
+      )}
 
-          {/* Main Dashboard Component Injection */}
-          <div
-            style={{ padding: "30px", maxWidth: "1400px", margin: "0 auto" }}
-          >
-            {/* We pass the user object down so the dashboard knows whose data to load */}
-            <Dashboard user={user} />
-          </div>
-        </div>
+      {/* Main Routing Logic */}
+      {user ? (
+        <Dashboard user={user} />
       ) : (
-        <AuthScreen onLoginSuccess={handleLogin} />
+        <AuthScreen onLoginSuccess={(userData) => setUser(userData)} />
       )}
     </div>
   );
