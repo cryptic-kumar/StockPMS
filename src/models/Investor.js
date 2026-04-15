@@ -31,7 +31,16 @@ export class Investor {
     return Array.from(this.#portfolios.values());
   }
 
+  // NEW: Delete a portfolio while safeguarding the primary one
   deletePortfolio(name) {
+    if (name === "My Primary Portfolio") {
+      throw new Error(
+        "Action Denied: You cannot delete your primary portfolio.",
+      );
+    }
+    if (!this.#portfolios.has(name)) {
+      throw new Error("Portfolio not found.");
+    }
     this.#portfolios.delete(name);
   }
 }

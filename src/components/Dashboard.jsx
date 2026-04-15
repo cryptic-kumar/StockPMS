@@ -205,6 +205,27 @@ export default function Dashboard({ user }) {
     }
   };
 
+  // NEW: Handle portfolio deletion safely
+  const handleDeletePortfolio = (name) => {
+    if (name === "My Primary Portfolio") {
+      alert("You cannot delete your primary portfolio.");
+      return;
+    }
+    if (
+      window.confirm(
+        `Are you sure you want to permanently delete the "${name}" portfolio? All stocks and transaction history will be lost.`,
+      )
+    ) {
+      try {
+        investor.current.deletePortfolio(name);
+        setActiveTab("My Primary Portfolio"); // Safely route back to primary
+        syncUI("My Primary Portfolio");
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+  };
+
   const handlePlaceOrder = (symbol, type, quantity, price) => {
     const newTxn = new Transaction(symbol, type, quantity, price);
     newTxn.targetPortfolio = activeTab; // Stamp the order with the current portfolio
@@ -259,25 +280,50 @@ export default function Dashboard({ user }) {
         }}
       >
         {portfolioList.map((name) => (
-          <button
+          <div
             key={name}
-            onClick={() => {
-              setActiveTab(name);
-              syncUI(name);
-            }}
             style={{
-              padding: "10px 20px",
+              display: "flex",
+              alignItems: "center",
               backgroundColor: activeTab === name ? "#1a202c" : "#e2e8f0",
-              color: activeTab === name ? "white" : "#1a202c",
-              border: "none",
               borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-              transition: "background 0.2s",
+              overflow: "hidden",
             }}
           >
-            {name}
-          </button>
+            <button
+              onClick={() => {
+                setActiveTab(name);
+                syncUI(name);
+              }}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "transparent",
+                color: activeTab === name ? "white" : "#1a202c",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              {name}
+            </button>
+            {/* DELETE BUTTON (Hidden for Primary Portfolio) */}
+            {name !== "My Primary Portfolio" && (
+              <button
+                onClick={() => handleDeletePortfolio(name)}
+                style={{
+                  padding: "10px",
+                  backgroundColor: "#e53e3e",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+                title="Delete Portfolio"
+              >
+                X
+              </button>
+            )}
+          </div>
         ))}
 
         <div style={{ display: "flex", gap: "8px", marginLeft: "auto" }}>
