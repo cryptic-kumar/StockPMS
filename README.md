@@ -1,4 +1,4 @@
-readme_content = """# SPMS Enterprise: Stock Portfolio Management System
+# SPMS Enterprise: Stock Portfolio Management System
 
 **Developed by:** Aditya Kumar Basant Sah (IT Engineering, Batch of 2026)  
 **Location:** Mumbai, Maharashtra
@@ -66,3 +66,51 @@ Instead of relying on disorganized JSON arrays, the entire business logic is bui
 ### Step-by-step Setup
 
 1. **Clone the repository and install dependencies:**
+
+```bash
+   git clone <your-repo-url>
+   cd stockpms
+   npm install
+```
+
+2. **Configure Firebase:**
+
+Create a file at **src/firebase.js.**
+
+Paste your Firebase config object and initialize auth and db.
+
+```bash
+(Note: Ensure Phone Auth is enabled in the Firebase Console and your number is added to the Test Numbers list to bypass Indian DND registries).
+```
+
+3. **Configure Market Data API:**
+
+Open **src/services/MarketDataService.js.**
+
+Replace the API_KEY placeholder with your actual Alpha Vantage key.
+
+4. **Run the Development Server:**
+
+```bash
+npm run dev
+```
+
+Open http://localhost:5173 in your browser.
+
+# 🧠 The Development Journey (How it was built)
+
+## Phase 1: The Mathematical Engine
+
+The project began without a UI. The Investor, Portfolio, and Stock classes were built to ensure all financial mathematics (P/L percentages, weighted averages) were perfectly encapsulated and completely decoupled from React.
+
+## Phase 2: The React Bridge
+
+The UI was built using React hooks (useState, useRef). The Dashboard.jsx component was designed strictly as a "View" layer. A powerful syncUI() function was written to act as a bridge—extracting data from the pure OOP classes and pushing it into React state to trigger re-renders.
+
+## Phase 3: Localization & APIs
+
+The application was tailored for the Indian market. The Intl.NumberFormat API was implemented to format all UI elements in Rupees (₹). The MarketDataService was engineered to handle asynchronous fetching and automatic USD-to-INR conversions seamlessly.
+
+## Phase 4: Cloud Migration
+
+In the final phase, the system was upgraded from simple browser localStorage to an enterprise cloud backend. Firebase Recaptcha was integrated to handle SMS verification. A hydration engine was built to pull JSON data from Firestore, parse it, and reinstantiate it back into fully functional JavaScript class objects upon user login.
