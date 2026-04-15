@@ -1,16 +1,68 @@
-# React + Vite
+readme_content = """# SPMS Enterprise: Stock Portfolio Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Developed by:** Aditya Kumar Basant Sah (IT Engineering, Batch of 2026)  
+**Location:** Mumbai, Maharashtra
 
-Currently, two official plugins are available:
+## 🚀 Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+SPMS Enterprise is a high-performance, front-end-heavy Web Application designed to simulate a professional trading terminal. This project transcends a standard React application by serving as a masterclass in **Pure Object-Oriented Programming (OOP)**, **Custom Data Structures**, and **Cloud Infrastructure**.
 
-## React Compiler
+It allows users to register securely via mobile OTP, manage multiple isolated stock portfolios, fetch live market data with automatic USD-to-INR (₹) forex conversion, and export financial ledgers—all backed by a real-time Google Firebase cloud database.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 🏗️ Core Architecture & Features
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 1. Pure OOP Engine (The Backend in the Frontend)
+
+Instead of relying on disorganized JSON arrays, the entire business logic is built using strict ES6 JavaScript classes.
+
+- **`Investor` Class:** The root entity. Manages a private map of `Portfolio` instances.
+- **`Portfolio` Class:** Encapsulates `Stock` instances and a ledger of `Transaction` records. Contains mathematical methods for calculating Total Invested, Current Value, and overall Profit/Loss.
+- **`Stock` Class:** Represents individual equity assets. Calculates dynamic returns based on real-time market ticks.
+- **`Transaction` Class:** Immutable records of every buy/sell action stamped with a unique ID and timestamp.
+
+### 2. Algorithmic Data Structures
+
+- **Transaction Queue (FIFO):** Trades are not executed instantly. They are pushed into a `TransactionQueue` and processed asynchronously by a mock market engine interval, simulating real-world broker execution delays.
+- **Undo Stack (LIFO):** Every executed trade pushes an inverse transaction into an `UndoStack`. Users can instantly revert their last action (e.g., accidentally buying 10 shares queues a sell order for 10 shares).
+
+### 3. Enterprise Cloud Infrastructure (Google Firebase)
+
+- **Phone/SMS Authentication:** Uses Firebase Auth with invisible reCAPTCHA v2 to send secure 6-digit OTPs to users, bypassing standard telecom blocks via Test Numbers.
+- **Firestore NoSQL Database:** Replaced `localStorage` with a live cloud database. The React UI serializes the OOP class instances into plain JSON objects, syncs them to the cloud on every action, and rehydrates them back into OOP classes upon login.
+
+### 4. Real-Time Market Integration & Localization
+
+- **Live Pricing & Forex:** Integrates with external financial APIs (Alpha Vantage/Yahoo Finance proxy) to fetch live stock quotes.
+- **Auto-Currency Conversion:** Detects if a stock is US-based (USD) or Indian (NSE/BSE). US stocks are automatically passed through a live Exchange Rate API and converted to Indian Rupees (₹) before entering the OOP engine.
+- **Mock Streaming Service:** A custom `MarketStreamer` class attaches a mathematical volatility algorithm to active holdings, ticking prices up and down every 2-4 seconds to simulate a live WebSockets feed.
+
+### 5. Advanced UI/UX Features
+
+- **Multi-Portfolio Management:** Users can create custom portfolios (e.g., "Tech Stocks", "Retirement"). Portfolios can be safely deleted, but the system actively guards the "Primary Portfolio" from deletion.
+- **CSV Ledger Export:** A vanilla JavaScript blob generator compiles the active portfolio's metrics, holdings, and transaction history into an Excel-compatible `.csv` file for instant download.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend Framework:** React 18 (Vite)
+- **Styling:** Inline CSS / Custom Component styling
+- **Database & Auth:** Google Firebase (Firestore, Phone Auth)
+- **Data APIs:** Alpha Vantage (Equities), ExchangeRate-API (Forex)
+- **Language:** JavaScript (ES6+ Strict OOP)
+
+---
+
+## 💻 Installation & Setup
+
+### Prerequisites
+
+- Node.js (v16+ recommended)
+- A free Google Firebase Project (with Phone Auth and Firestore enabled in Test Mode)
+- A free Alpha Vantage API Key
+
+### Step-by-step Setup
+
+1. **Clone the repository and install dependencies:**
