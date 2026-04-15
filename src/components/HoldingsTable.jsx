@@ -1,38 +1,30 @@
-// components/HoldingsTable.jsx
 import React, { useState } from "react";
 
+// Standard formatter for Indian Rupees
+const formatINR = (amount) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
+    amount,
+  );
+
 export default function HoldingsTable({ holdings, portfolioInstance }) {
-  // Local state to manage how the table is currently sorted
-  const [displayHoldings, setDisplayHoldings] = useState(holdings);
-  const [sortType, setSortType] = useState("DEFAULT");
+  const [sortMethod, setSortMethod] = useState("DEFAULT");
 
-  // Sync local state when the parent updates the holdings (e.g., after an order processes)
-  React.useEffect(() => {
-    setDisplayHoldings(holdings);
-    setSortType("DEFAULT");
-  }, [holdings]);
+  let displayHoldings = [...holdings];
 
-  const handleSort = (type) => {
-    setSortType(type);
-    if (type === "PROFIT") {
-      // Calls the pure OOP sorting method
-      setDisplayHoldings(portfolioInstance.sortByHighestProfit());
-    } else if (type === "VALUE") {
-      // Calls the pure OOP sorting method
-      setDisplayHoldings(portfolioInstance.sortByCurrentValue());
-    } else {
-      setDisplayHoldings(holdings);
-    }
-  };
+  if (sortMethod === "PROFIT") {
+    displayHoldings = portfolioInstance.sortByHighestProfit();
+  } else if (sortMethod === "VALUE") {
+    displayHoldings = portfolioInstance.sortByCurrentValue();
+  }
 
   return (
     <div
-      className="holdings-table"
       style={{
+        flex: 2,
         border: "1px solid #ccc",
         padding: "20px",
         borderRadius: "8px",
-        flex: 2,
+        backgroundColor: "white",
       }}
     >
       <div
@@ -40,104 +32,91 @@ export default function HoldingsTable({ holdings, portfolioInstance }) {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          marginBottom: "20px",
         }}
       >
-        <h3>Current Holdings</h3>
-
-        {/* SORTING CONTROLS */}
-        <div>
-          <span style={{ marginRight: "10px", fontSize: "14px" }}>
-            Sort By:
-          </span>
-          <button
-            onClick={() => handleSort("DEFAULT")}
-            disabled={sortType === "DEFAULT"}
-          >
-            Default
-          </button>
-          <button
-            onClick={() => handleSort("VALUE")}
-            disabled={sortType === "VALUE"}
-            style={{ margin: "0 5px" }}
-          >
-            Highest Value
-          </button>
-          <button
-            onClick={() => handleSort("PROFIT")}
-            disabled={sortType === "PROFIT"}
-          >
-            Highest Profit
-          </button>
-        </div>
+        <h3 style={{ margin: 0 }}>Current Holdings</h3>
+        <select
+          value={sortMethod}
+          onChange={(e) => setSortMethod(e.target.value)}
+          style={{
+            padding: "8px",
+            borderRadius: "4px",
+            border: "1px solid #ccc",
+          }}
+        >
+          <option value="DEFAULT">Sort: Time Added</option>
+          <option value="PROFIT">Sort: Highest Profit</option>
+          <option value="VALUE">Sort: Highest Value</option>
+        </select>
       </div>
 
       {displayHoldings.length === 0 ? (
-        <p style={{ color: "#666" }}>
-          No stocks in portfolio. Queue a buy order to begin.
+        <p style={{ color: "#888" }}>
+          Your portfolio is currently empty. Buy some stocks to get started!
         </p>
       ) : (
         <table
           style={{
             width: "100%",
-            textAlign: "left",
             borderCollapse: "collapse",
-            marginTop: "15px",
+            textAlign: "left",
           }}
         >
           <thead>
-            <tr style={{ borderBottom: "2px solid #ddd" }}>
-              <th style={{ padding: "10px" }}>Symbol</th>
-              <th>Quantity</th>
-              <th>Avg. Purchase Price</th>
-              <th>Current Price</th>
-              <th>Total Value</th>
-              <th>Profit/Loss</th>
+            <tr
+              style={{
+                backgroundColor: "#f8f9fa",
+                borderBottom: "2px solid #ddd",
+              }}
+            >
+              <th style={{ padding: "12px" }}>Symbol</th>
+              <th style={{ padding: "12px" }}>Shares</th>
+              <th style={{ padding: "12px" }}>Avg. Cost</th>
+              <th style={{ padding: "12px" }}>Market Price</th>
+              <th style={{ padding: "12px" }}>Total Value</th>
+              <th style={{ padding: "12px" }}>P/L</th>
             </tr>
           </thead>
           <tbody>
             {displayHoldings.map((stock) => {
-              const totalValue = stock.currentMarketPrice * stock.quantity;
-              const profit = stock.calculateReturn(); // Polymorphic OOP method
+              const profitLoss = stock.calculateReturn();
+              const isProfit = profitLoss >= 0;
+              const totalValue = stock.quantity * stock.currentMarketPrice;
 
               return (
                 <tr
-                  key={stock.stockId}
+                  key={stock.symbol}
                   style={{ borderBottom: "1px solid #eee" }}
                 >
-                  <td style={{ padding: "10px", fontWeight: "bold" }}>
+                  <td style={{ padding: "12px", fontWeight: "bold" }}>
                     {stock.symbol}
                   </td>
-                  <td>{stock.quantity}</td>
-                  <td>${stock.purchasePrice.toFixed(2)}</td>
-                  <td>${stock.currentMarketPrice.toFixed(2)}</td>
-                  <td>${totalValue.toFixed(2)}</td>
+                  <td style={{ padding: "12px" }}>{stock.quantity}</td>
+                  <td style={{ padding: "12px" }}>
+                    {formatINR(stock.purchasePrice)}
+                  </td>
+                  <td style={{ padding: "12px" }}>
+                    {formatINR(stock.currentMarketPrice)}
+                  </td>
+                  <td style={{ padding: "12px", fontWeight: "bold" }}>
+                    {formatINR(totalValue)}
+                  </td>
                   <td
                     style={{
-                      color: profit >= 0 ? "green" : "red",
+                      padding: "12px",
+                      color: isProfit ? "green" : "red",
                       fontWeight: "bold",
                     }}
                   >
-                    ${profit.toFixed(2)}
+                    {isProfit ? "+" : ""}
+                    {formatINR(profitLoss)}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      )}
-
-      {/* Top/Worst Performing Asset Identification */}
-      {displayHoldings.length > 0 && (
-        <div style={{ marginTop: "20px", fontSize: "14px", color: "#555" }}>
-          <p>
-            <strong>Top Performer:</strong>{" "}
-            {portfolioInstance.getTopPerformingAsset()?.symbol}
-          </p>
-          <p>
-            <strong>Worst Performer:</strong>{" "}
-            {portfolioInstance.getWorstPerformingAsset()?.symbol}
-          </p>
-        </div>
       )}
     </div>
   );

@@ -14,6 +14,12 @@ import { MarketDataService } from "../services/MarketDataService";
 import TradingTerminal from "./TradingTerminal";
 import HoldingsTable from "./HoldingsTable";
 
+// Standard formatter for Indian Rupees
+const formatINR = (amount) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
+    amount,
+  );
+
 export default function Dashboard({ user }) {
   // 1. OOP INSTANTIATION
   const investor = useRef(null);
@@ -205,7 +211,6 @@ export default function Dashboard({ user }) {
     }
   };
 
-  // NEW: Handle portfolio deletion safely
   const handleDeletePortfolio = (name) => {
     if (name === "My Primary Portfolio") {
       alert("You cannot delete your primary portfolio.");
@@ -394,13 +399,13 @@ export default function Dashboard({ user }) {
             Total Invested
           </h4>
           <p style={{ fontSize: "24px", margin: 0, fontWeight: "bold" }}>
-            ${metrics.invested.toFixed(2)}
+            {formatINR(metrics.invested)}
           </p>
         </div>
         <div>
           <h4 style={{ margin: "0 0 10px 0", color: "#555" }}>Current Value</h4>
           <p style={{ fontSize: "24px", margin: 0, fontWeight: "bold" }}>
-            ${metrics.currentValue.toFixed(2)}
+            {formatINR(metrics.currentValue)}
           </p>
         </div>
         <div>
@@ -525,7 +530,7 @@ export default function Dashboard({ user }) {
                   </td>
                   <td style={{ fontWeight: "bold" }}>{txn.stockSymbol}</td>
                   <td>{txn.quantity}</td>
-                  <td>${txn.price.toFixed(2)}</td>
+                  <td>{formatINR(txn.price)}</td>
                 </tr>
               ))}
             </tbody>
