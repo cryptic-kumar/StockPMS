@@ -13,13 +13,11 @@ export default function AuthScreen({ onLoginSuccess }) {
 
   // Initialize invisible Recaptcha safely for React
   useEffect(() => {
-    // 1. If a verifier already exists (from a hot-reload), clear it out first
     if (window.recaptchaVerifier) {
       window.recaptchaVerifier.clear();
       window.recaptchaVerifier = null;
     }
 
-    // 2. Create a fresh verifier attached to the current DOM
     window.recaptchaVerifier = new RecaptchaVerifier(
       auth,
       "recaptcha-container",
@@ -28,7 +26,6 @@ export default function AuthScreen({ onLoginSuccess }) {
       },
     );
 
-    // 3. Cleanup function: When you log in or the component unmounts, destroy the verifier
     return () => {
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.clear();
@@ -49,19 +46,17 @@ export default function AuthScreen({ onLoginSuccess }) {
         : `+91${phoneNumber}`;
       const appVerifier = window.recaptchaVerifier;
 
-      // Sends the real SMS (or uses Test Number if configured in console)
       const confirmation = await signInWithPhoneNumber(
         auth,
         formattedPhone,
         appVerifier,
       );
       setConfirmationResult(confirmation);
-      setStep(2); // Move to OTP screen
+      setStep(2);
     } catch (err) {
       console.error(err);
       setError("Failed to send SMS. Ensure number is valid and check console.");
 
-      // If sending fails, reset the captcha so the user can try clicking the button again
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.render().then(function (widgetId) {
           window.grecaptcha.reset(widgetId);
@@ -81,7 +76,6 @@ export default function AuthScreen({ onLoginSuccess }) {
       const result = await confirmationResult.confirm(otp);
       const user = result.user;
 
-      // Pass the unique Firebase User ID to the app
       onLoginSuccess({ uid: user.uid, phone: user.phoneNumber });
     } catch (err) {
       setError("Invalid OTP Code. Please try again.");
@@ -96,22 +90,81 @@ export default function AuthScreen({ onLoginSuccess }) {
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        height: "100vh",
-        backgroundColor: "#f4f4f9",
+        minHeight: "100vh",
+        backgroundColor: "var(--bg-app)",
+        padding: "20px",
       }}
     >
       <div
         style={{
-          background: "white",
-          padding: "40px",
-          borderRadius: "8px",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
-          width: "320px",
+          background: "var(--bg-card)",
+          padding: "clamp(24px, 5vw, 40px)",
+          borderRadius: "16px",
+          boxShadow: "var(--shadow-lg)",
+          border: "1px solid var(--border-light)",
+          width: "100%",
+          maxWidth: "400px",
         }}
       >
-        <h2 style={{ textAlign: "center", marginBottom: "20px" }}>
-          Investor Login
-        </h2>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <h2
+            style={{
+              margin: "0 0 8px 0",
+              fontSize: "24px",
+              fontWeight: "700",
+              color: "var(--text-main)",
+            }}
+          >
+            SPMS Enterprise
+          </h2>
+          <p
+            style={{ margin: 0, fontSize: "14px", color: "var(--text-muted)" }}
+          >
+            Sign in to your trading terminal
+          </p>
+        </div>
+
+        {/* TEST CREDENTIALS HINT */}
+        <div
+          style={{
+            backgroundColor: "#f0fdf4",
+            border: "1px dashed #bbf7d0",
+            padding: "16px",
+            borderRadius: "12px",
+            marginBottom: "24px",
+            textAlign: "center",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              fontSize: "12px",
+              color: "var(--success)",
+              fontWeight: "700",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              marginBottom: "8px",
+            }}
+          >
+            🧪 Test Credentials
+          </span>
+          <div
+            style={{
+              fontSize: "14px",
+              color: "var(--text-main)",
+              fontWeight: "500",
+              display: "flex",
+              justifyContent: "space-around",
+            }}
+          >
+            <span>
+              <strong>Phone:</strong> 9999999999
+            </span>
+            <span>
+              <strong>OTP:</strong> 123456
+            </span>
+          </div>
+        </div>
 
         {/* Invisible Div required for Firebase Recaptcha */}
         <div id="recaptcha-container"></div>
@@ -119,12 +172,14 @@ export default function AuthScreen({ onLoginSuccess }) {
         {error && (
           <p
             style={{
-              color: "red",
-              fontSize: "14px",
+              backgroundColor: "#fef2f2",
+              color: "var(--danger)",
+              padding: "12px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              border: "1px solid #fecaca",
+              marginBottom: "20px",
               textAlign: "center",
-              backgroundColor: "#ffebee",
-              padding: "8px",
-              borderRadius: "4px",
             }}
           >
             {error}
@@ -135,11 +190,8 @@ export default function AuthScreen({ onLoginSuccess }) {
         {step === 1 && (
           <form
             onSubmit={handleRequestOTP}
-            style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
           >
-            <p style={{ fontSize: "13px", color: "gray", margin: 0 }}>
-              Enter your mobile number to receive an OTP.
-            </p>
             <input
               type="tel"
               placeholder="Mobile Number (e.g. 9876543210)"
@@ -147,25 +199,32 @@ export default function AuthScreen({ onLoginSuccess }) {
               onChange={(e) => setPhoneNumber(e.target.value)}
               required
               style={{
-                padding: "10px",
-                borderRadius: "4px",
-                border: "1px solid #ccc",
+                width: "100%",
+                padding: "14px 16px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-light)",
+                fontSize: "15px",
+                backgroundColor: "var(--bg-app)",
               }}
             />
             <button
               type="submit"
               disabled={loading}
               style={{
-                padding: "10px",
-                backgroundColor: loading ? "#ccc" : "#007bff",
+                width: "100%",
+                padding: "14px",
+                backgroundColor: "var(--primary)",
                 color: "white",
                 border: "none",
-                borderRadius: "4px",
+                borderRadius: "8px",
+                fontSize: "15px",
+                fontWeight: "600",
                 cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: "bold",
+                boxShadow: "var(--shadow-sm)",
+                opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? "Sending..." : "Send Secure OTP"}
+              {loading ? "Securing connection..." : "Send Secure OTP"}
             </button>
           </form>
         )}
@@ -174,12 +233,12 @@ export default function AuthScreen({ onLoginSuccess }) {
         {step === 2 && (
           <form
             onSubmit={handleVerifyOTP}
-            style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
           >
             <p
               style={{
                 fontSize: "13px",
-                color: "gray",
+                color: "var(--text-muted)",
                 margin: 0,
                 textAlign: "center",
               }}
@@ -188,18 +247,20 @@ export default function AuthScreen({ onLoginSuccess }) {
             </p>
             <input
               type="text"
-              placeholder="Enter OTP"
+              placeholder="000000"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
               required
               style={{
-                padding: "10px",
-                borderRadius: "4px",
-                border: "1px solid #ccc",
-                letterSpacing: "4px",
+                width: "100%",
+                padding: "16px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-light)",
+                fontSize: "24px",
+                letterSpacing: "8px",
                 textAlign: "center",
-                fontSize: "20px",
-                fontWeight: "bold",
+                fontWeight: "700",
+                backgroundColor: "var(--bg-app)",
               }}
               maxLength="6"
             />
@@ -207,13 +268,17 @@ export default function AuthScreen({ onLoginSuccess }) {
               type="submit"
               disabled={loading}
               style={{
-                padding: "10px",
-                backgroundColor: loading ? "#ccc" : "#28a745",
+                width: "100%",
+                padding: "14px",
+                backgroundColor: "var(--success)",
                 color: "white",
                 border: "none",
-                borderRadius: "4px",
+                borderRadius: "8px",
                 cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: "bold",
+                fontWeight: "600",
+                fontSize: "15px",
+                boxShadow: "var(--shadow-sm)",
+                opacity: loading ? 0.7 : 1,
               }}
             >
               {loading ? "Verifying..." : "Verify & Login"}
@@ -223,18 +288,20 @@ export default function AuthScreen({ onLoginSuccess }) {
               onClick={() => {
                 setStep(1);
                 setError("");
+                setOtp("");
               }}
               style={{
-                padding: "8px",
+                width: "100%",
+                padding: "10px",
                 backgroundColor: "transparent",
-                color: "#666",
+                color: "var(--text-muted)",
                 border: "none",
                 cursor: "pointer",
-                fontSize: "12px",
-                textDecoration: "underline",
+                fontSize: "13px",
+                marginTop: "4px",
               }}
             >
-              Cancel / Change Number
+              ← Change mobile number
             </button>
           </form>
         )}

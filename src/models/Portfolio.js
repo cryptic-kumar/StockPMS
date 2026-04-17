@@ -80,6 +80,21 @@ export class Portfolio {
     const profitLoss = currentValue - invested;
     return Number(((profitLoss / invested) * 100).toFixed(2)); // Returns percentage
   }
+  calculateStockProfitLoss(symbol) {
+    const stock = this.#holdings.find((s) => s.symbol === symbol);
+    if (!stock) return { amount: 0, percentage: 0 };
+
+    const invested = stock.purchasePrice * stock.quantity;
+    if (invested === 0) return { amount: 0, percentage: 0 };
+
+    const currentValue = stock.currentMarketPrice * stock.quantity;
+    const profitLoss = currentValue - invested;
+
+    return {
+      amount: profitLoss,
+      percentage: Number(((profitLoss / invested) * 100).toFixed(2)),
+    };
+  }
 
   // --- SORTING ALGORITHMS ---
   // JavaScript's built-in .sort() uses an optimized TimSort (merge/insertion hybrid)

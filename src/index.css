@@ -1,0 +1,110 @@
+/* src/index.css */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  /* Modern Slate & Indigo Color Palette */
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-light: #e2e8f0;
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning-bg: #fef3c7;
+  --warning-text: #b45309;
+
+  /* Modern Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Modern Input & Button Reset */
+input,
+select {
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+  background-color: #f8fafc;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1) !important;
+  background-color: #ffffff;
+}
+
+button {
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+}
+
+/* Modern Table Reset */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th {
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-light);
+  background-color: #f8fafc;
+}
+td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  color: var(--text-main);
+}
+/* --- RESPONSIVE MOBILE TWEAKS --- */
+@media (max-width: 768px) {
+  th,
+  td {
+    padding: 12px 8px; /* Slightly tighter table cells on mobile */
+    font-size: 13px;
+  }
+
+  input,
+  select,
+  button {
+    font-size: 16px !important; /* Prevents iOS Safari from auto-zooming */
+  }
+
+  /* Make sure our scrollable tables feel native on mobile */
+  .table-container {
+    -webkit-overflow-scrolling: touch;
+  }
+}

@@ -1,3 +1,4 @@
+// src/components/TradingTerminal.jsx
 import React, { useState } from "react";
 import { MarketDataService } from "../services/MarketDataService";
 
@@ -12,180 +13,332 @@ export default function TradingTerminal({
   pendingOrders,
   isUndoDisabled,
 }) {
-  const [symbol, setSymbol] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [searchSymbol, setSearchSymbol] = useState("");
+  const [livePrice, setLivePrice] = useState(0);
+  const [loadingPrice, setLoadingPrice] = useState(false);
+
+  const [orderType, setOrderType] = useState("BUY");
+  const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState("");
-  const [isLoadingPrice, setIsLoadingPrice] = useState(false);
 
-  const handleFetchLivePrice = async () => {
-    if (!symbol) {
-      alert("Please enter a symbol first (e.g., RELIANCE.NS or AAPL)");
-      return;
-    }
-
-    setIsLoadingPrice(true);
+  const fetchLivePrice = async (e) => {
+    e.preventDefault();
+    if (!searchSymbol) return;
+    setLoadingPrice(true);
     try {
-      const livePrice = await MarketDataService.getCurrentPrice(symbol);
-      setPrice(livePrice);
+      const fetchedPrice =
+        await MarketDataService.getCurrentPrice(searchSymbol);
+      setLivePrice(fetchedPrice);
+      setPrice(fetchedPrice);
     } catch (error) {
-      alert("Could not fetch price. Check the symbol suffix or API limits.");
+      alert("Failed to fetch price. Ensure the symbol is correct.");
     } finally {
-      setIsLoadingPrice(false);
+      setLoadingPrice(false);
     }
   };
 
-  const handleSubmit = (type) => {
-    if (!symbol || quantity <= 0 || price <= 0) {
-      alert("Please enter a valid symbol, positive quantity, and price.");
-      return;
-    }
-    onPlaceOrder(symbol, type, Number(quantity), Number(price));
-    setSymbol("");
-    setQuantity("");
+  const handleSubmitOrder = (e) => {
+    e.preventDefault();
+    if (!searchSymbol || !price || quantity <= 0) return;
+    onPlaceOrder(
+      searchSymbol,
+      orderType,
+      parseInt(quantity, 10),
+      parseFloat(price),
+    );
+    setQuantity(1);
     setPrice("");
+    setSearchSymbol("");
+    setLivePrice(0);
   };
 
   return (
     <div
-      className="trading-terminal"
       style={{
-        border: "1px solid #ccc",
-        padding: "20px",
-        borderRadius: "8px",
-        flex: 1,
-        backgroundColor: "white",
+        backgroundColor: "var(--bg-card)",
+        padding: "clamp(16px, 3vw, 24px)",
+        borderRadius: "12px",
+        border: "1px solid var(--border-light)",
+        boxShadow: "var(--shadow-sm)",
+        width: "100%",
       }}
     >
-      <h3 style={{ marginTop: 0 }}>Trading Terminal</h3>
+      <h3
+        style={{
+          marginTop: 0,
+          marginBottom: "20px",
+          fontSize: "18px",
+          fontWeight: "600",
+        }}
+      >
+        Trading Terminal
+      </h3>
 
+      {/* Live Price Widget */}
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-          marginBottom: "15px",
+          gap: "8px",
+          marginBottom: "24px",
+          flexWrap: "wrap",
         }}
       >
         <input
           type="text"
-          placeholder="Symbol (e.g., RELIANCE.NS)"
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          placeholder="Symbol (e.g. AAPL)"
+          value={searchSymbol}
+          onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
           style={{
-            padding: "10px",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
+            flex: "1 1 150px",
+            padding: "10px 16px",
+            borderRadius: "8px",
+            border: "1px solid var(--border-light)",
+            fontSize: "14px",
+            width: "100%",
           }}
         />
-
         <button
-          onClick={handleFetchLivePrice}
-          disabled={isLoadingPrice}
+          onClick={fetchLivePrice}
+          disabled={loadingPrice || !searchSymbol}
           style={{
-            padding: "10px",
-            backgroundColor: "#e2e8f0",
-            border: "1px solid #cbd5e1",
+            flex: "0 1 auto",
+            padding: "10px 16px",
+            backgroundColor: "var(--bg-app)",
+            border: "1px solid var(--border-light)",
+            borderRadius: "8px",
             cursor: "pointer",
-            borderRadius: "4px",
-            fontWeight: "bold",
+            fontWeight: "500",
+            fontSize: "14px",
+            color: "var(--text-main)",
           }}
         >
-          {isLoadingPrice ? "Fetching..." : "Get Live Market Price"}
-        </button>
-
-        <input
-          type="number"
-          placeholder="Current Market Price (₹)"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          style={{
-            padding: "10px",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
-          }}
-        />
-        <input
-          type="number"
-          placeholder="Quantity"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          style={{
-            padding: "10px",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
-          }}
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <button
-          onClick={() => handleSubmit("BUY")}
-          style={{
-            backgroundColor: "#4CAF50",
-            color: "white",
-            padding: "10px",
-            border: "none",
-            cursor: "pointer",
-            flex: 1,
-            borderRadius: "4px",
-            fontWeight: "bold",
-          }}
-        >
-          QUEUE BUY
-        </button>
-        <button
-          onClick={() => handleSubmit("SELL")}
-          style={{
-            backgroundColor: "#e53e3e",
-            color: "white",
-            padding: "10px",
-            border: "none",
-            cursor: "pointer",
-            flex: 1,
-            borderRadius: "4px",
-            fontWeight: "bold",
-          }}
-        >
-          QUEUE SELL
+          {loadingPrice ? "..." : "Quote"}
         </button>
       </div>
 
-      <div style={{ borderTop: "1px solid #eee", paddingTop: "15px" }}>
+      {livePrice > 0 && (
+        <div
+          style={{
+            backgroundColor: "#f0fdf4",
+            padding: "16px",
+            borderRadius: "8px",
+            marginBottom: "24px",
+            border: "1px solid #bbf7d0",
+            textAlign: "center",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              fontSize: "12px",
+              color: "var(--success)",
+              fontWeight: "600",
+              textTransform: "uppercase",
+              marginBottom: "4px",
+            }}
+          >
+            Live Market Price
+          </span>
+          <strong style={{ fontSize: "24px", color: "var(--text-main)" }}>
+            {formatINR(livePrice)}
+          </strong>
+        </div>
+      )}
+
+      {/* Order Entry Form (Responsive Grid) */}
+      <form
+        onSubmit={handleSubmitOrder}
+        style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "13px",
+                color: "var(--text-muted)",
+                marginBottom: "6px",
+                fontWeight: "500",
+              }}
+            >
+              Order Type
+            </label>
+            <select
+              value={orderType}
+              onChange={(e) => setOrderType(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-light)",
+                fontSize: "14px",
+              }}
+            >
+              <option value="BUY">Buy</option>
+              <option value="SELL">Sell</option>
+            </select>
+          </div>
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "13px",
+                color: "var(--text-muted)",
+                marginBottom: "6px",
+                fontWeight: "500",
+              }}
+            >
+              Quantity
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              required
+              style={{
+                width: "100%",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-light)",
+                fontSize: "14px",
+              }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: "13px",
+              color: "var(--text-muted)",
+              marginBottom: "6px",
+              fontWeight: "500",
+            }}
+          >
+            Limit Price (₹)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            required
+            style={{
+              width: "100%",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-light)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+
+        <button
+          type="submit"
+          style={{
+            padding: "14px",
+            backgroundColor:
+              orderType === "BUY" ? "var(--success)" : "var(--danger)",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "600",
+            fontSize: "15px",
+            marginTop: "8px",
+            boxShadow: "var(--shadow-sm)",
+            width: "100%",
+          }}
+        >
+          Execute {orderType} Order
+        </button>
+      </form>
+
+      {/* Pending Queue & Undo */}
+      <div
+        style={{
+          marginTop: "32px",
+          borderTop: "1px solid var(--border-light)",
+          paddingTop: "24px",
+        }}
+      >
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "10px",
+            marginBottom: "16px",
+            flexWrap: "wrap",
+            gap: "8px",
           }}
         >
-          <h4 style={{ margin: 0 }}>Pending Queue</h4>
+          <h4
+            style={{
+              margin: 0,
+              fontSize: "14px",
+              color: "var(--text-muted)",
+              fontWeight: "600",
+            }}
+          >
+            Order Queue: {pendingOrders.length}
+          </h4>
           <button
             onClick={onUndo}
             disabled={isUndoDisabled}
             style={{
-              padding: "5px 10px",
-              backgroundColor: isUndoDisabled ? "#ccc" : "#f6ad55",
-              border: "none",
-              borderRadius: "4px",
+              padding: "6px 12px",
+              backgroundColor: "transparent",
+              border: "1px solid var(--border-light)",
+              borderRadius: "6px",
               cursor: isUndoDisabled ? "not-allowed" : "pointer",
+              fontSize: "12px",
+              fontWeight: "500",
+              color: "var(--text-main)",
             }}
           >
-            ↩ Undo Last Action
+            ↩ Undo Last
           </button>
         </div>
-        {pendingOrders.length === 0 ? (
-          <p style={{ color: "#888", fontSize: "14px" }}>No orders in queue.</p>
-        ) : (
-          <ul style={{ paddingLeft: "20px", fontSize: "14px" }}>
-            {pendingOrders.map((order, index) => (
-              <li key={index}>
-                <strong>{order.type}</strong> {order.quantity}{" "}
-                {order.stockSymbol} @ {formatINR(order.price)}
-              </li>
-            ))}
-          </ul>
-        )}
+        <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+          {pendingOrders.map((order) => (
+            <div
+              key={order.transactionId}
+              style={{
+                padding: "10px 0",
+                borderBottom: "1px dashed var(--border-light)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>
+                <strong
+                  style={{
+                    color:
+                      order.type === "BUY" ? "var(--success)" : "var(--danger)",
+                  }}
+                >
+                  {order.type}
+                </strong>{" "}
+                {order.quantity} {order.stockSymbol}
+              </span>
+              <span style={{ fontWeight: "500" }}>
+                {formatINR(order.price)}
+              </span>
+            </div>
+          ))}
+          {pendingOrders.length === 0 && (
+            <span style={{ fontStyle: "italic" }}>No pending orders.</span>
+          )}
+        </div>
       </div>
     </div>
   );

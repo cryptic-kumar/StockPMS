@@ -1,122 +1,127 @@
-import React, { useState } from "react";
+// src/components/HoldingsTable.jsx
+import React from "react";
 
-// Standard formatter for Indian Rupees
 const formatINR = (amount) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
     amount,
   );
 
 export default function HoldingsTable({ holdings, portfolioInstance }) {
-  const [sortMethod, setSortMethod] = useState("DEFAULT");
-
-  let displayHoldings = [...holdings];
-
-  if (sortMethod === "PROFIT") {
-    displayHoldings = portfolioInstance.sortByHighestProfit();
-  } else if (sortMethod === "VALUE") {
-    displayHoldings = portfolioInstance.sortByCurrentValue();
-  }
+  if (!portfolioInstance) return null;
 
   return (
     <div
       style={{
-        flex: 2,
-        border: "1px solid #ccc",
-        padding: "20px",
-        borderRadius: "8px",
-        backgroundColor: "white",
+        backgroundColor: "var(--bg-card)",
+        borderRadius: "12px",
+        border: "1px solid var(--border-light)",
+        boxShadow: "var(--shadow-sm)",
+        overflow: "hidden",
+        width: "100%",
       }}
     >
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "20px",
+          padding: "20px",
+          borderBottom: "1px solid var(--border-light)",
         }}
       >
-        <h3 style={{ margin: 0 }}>Current Holdings</h3>
-        <select
-          value={sortMethod}
-          onChange={(e) => setSortMethod(e.target.value)}
-          style={{
-            padding: "8px",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
-          }}
-        >
-          <option value="DEFAULT">Sort: Time Added</option>
-          <option value="PROFIT">Sort: Highest Profit</option>
-          <option value="VALUE">Sort: Highest Value</option>
-        </select>
+        <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "600" }}>
+          Current Holdings
+        </h3>
       </div>
 
-      {displayHoldings.length === 0 ? (
-        <p style={{ color: "#888" }}>
-          Your portfolio is currently empty. Buy some stocks to get started!
-        </p>
-      ) : (
-        <table
+      {holdings.length === 0 ? (
+        <div
           style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            textAlign: "left",
+            padding: "40px 20px",
+            textAlign: "center",
+            color: "var(--text-muted)",
           }}
         >
-          <thead>
-            <tr
-              style={{
-                backgroundColor: "#f8f9fa",
-                borderBottom: "2px solid #ddd",
-              }}
-            >
-              <th style={{ padding: "12px" }}>Symbol</th>
-              <th style={{ padding: "12px" }}>Shares</th>
-              <th style={{ padding: "12px" }}>Avg. Cost</th>
-              <th style={{ padding: "12px" }}>Market Price</th>
-              <th style={{ padding: "12px" }}>Total Value</th>
-              <th style={{ padding: "12px" }}>P/L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayHoldings.map((stock) => {
-              const profitLoss = stock.calculateReturn();
-              const isProfit = profitLoss >= 0;
-              const totalValue = stock.quantity * stock.currentMarketPrice;
+          <p style={{ fontSize: "15px" }}>No stocks in this portfolio yet.</p>
+          <p style={{ fontSize: "13px", marginTop: "8px" }}>
+            Use the Trading Terminal to place an order.
+          </p>
+        </div>
+      ) : (
+        <div
+          className="table-container"
+          style={{ overflowX: "auto", width: "100%" }}
+        >
+          <table style={{ minWidth: "600px" }}>
+            {" "}
+            {/* Forces scroll on tiny phones to prevent data crush */}
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>Asset</th>
+                <th style={{ textAlign: "right" }}>Shares</th>
+                <th style={{ textAlign: "right" }}>Avg Price</th>
+                <th style={{ textAlign: "right" }}>LTP</th>
+                <th style={{ textAlign: "right" }}>Total Value</th>
+                <th style={{ textAlign: "right" }}>P/L (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holdings.map((stock) => {
+                const totalValue = stock.quantity * stock.currentMarketPrice;
+                const plData = portfolioInstance.calculateStockProfitLoss(
+                  stock.symbol,
+                );
+                const isProfit = plData.percentage >= 0;
 
-              return (
-                <tr
-                  key={stock.symbol}
-                  style={{ borderBottom: "1px solid #eee" }}
-                >
-                  <td style={{ padding: "12px", fontWeight: "bold" }}>
-                    {stock.symbol}
-                  </td>
-                  <td style={{ padding: "12px" }}>{stock.quantity}</td>
-                  <td style={{ padding: "12px" }}>
-                    {formatINR(stock.purchasePrice)}
-                  </td>
-                  <td style={{ padding: "12px" }}>
-                    {formatINR(stock.currentMarketPrice)}
-                  </td>
-                  <td style={{ padding: "12px", fontWeight: "bold" }}>
-                    {formatINR(totalValue)}
-                  </td>
-                  <td
-                    style={{
-                      padding: "12px",
-                      color: isProfit ? "green" : "red",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {isProfit ? "+" : ""}
-                    {formatINR(profitLoss)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <tr key={stock.symbol}>
+                    <td style={{ fontWeight: "600" }}>
+                      {stock.symbol}
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--text-muted)",
+                          fontWeight: "400",
+                          marginTop: "4px",
+                        }}
+                      >
+                        {stock.companyName}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: "500" }}>
+                      {stock.quantity}
+                    </td>
+                    <td
+                      style={{ textAlign: "right", color: "var(--text-muted)" }}
+                    >
+                      {formatINR(stock.purchasePrice)}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: "500" }}>
+                      {formatINR(stock.currentMarketPrice)}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: "600" }}>
+                      {formatINR(totalValue)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <span
+                        style={{
+                          backgroundColor: isProfit ? "#f0fdf4" : "#fef2f2",
+                          color: isProfit ? "var(--success)" : "var(--danger)",
+                          padding: "6px 12px",
+                          borderRadius: "20px",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          display: "inline-block",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isProfit ? "▲" : "▼"}{" "}
+                        {Math.abs(plData.percentage).toFixed(2)}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

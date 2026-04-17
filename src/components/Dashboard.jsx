@@ -1,7 +1,7 @@
 // src/components/Dashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
 
-// Import our pure OOP classes (The Engine)
+// Import pure OOP classes (The Engine)
 import { Investor } from "../models/Investor";
 import { PortfolioManager } from "../models/Portfolio";
 import { TransactionQueue, UndoStack } from "../models/DataStructures";
@@ -26,7 +26,6 @@ export default function Dashboard({ user }) {
   const orderQueue = useRef(new TransactionQueue());
   const undoStack = useRef(new UndoStack());
 
-  // Initialize the Investor class once when the user loads (using UID)
   if (!investor.current && user && user.uid) {
     investor.current = new Investor(user.uid, user.phone);
   }
@@ -35,7 +34,6 @@ export default function Dashboard({ user }) {
   const [activeTab, setActiveTab] = useState("");
   const [portfolioList, setPortfolioList] = useState([]);
   const [newPortfolioName, setNewPortfolioName] = useState("");
-
   const [holdings, setHoldings] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [transactionHistory, setTransactionHistory] = useState([]);
@@ -64,7 +62,7 @@ export default function Dashboard({ user }) {
     const activeP = investor.current.getPortfolio(currentTab);
     if (!activeP) return;
 
-    // A. Check for Gain/Loss Alerts on the active portfolio
+    // A. Check for Gain/Loss Alerts
     const systemAlerts = [];
     activeP.getStocks().forEach((stock) => {
       const alertMsg = PortfolioManager.checkLossAlerts(stock, -5);
@@ -83,7 +81,6 @@ export default function Dashboard({ user }) {
           quantity: s.quantity,
           currentMarketPrice: s.currentMarketPrice,
         })),
-        // Map the custom Transaction class into a plain object so Firebase accepts it
         history: p.getTransactionHistory().map((tx) => ({
           transactionId: tx.transactionId,
           stockSymbol: tx.stockSymbol,
@@ -95,7 +92,6 @@ export default function Dashboard({ user }) {
       };
     });
 
-    // Send to Firebase Cloud Database (Fire and Forget)
     if (user && user.uid) {
       UserAuth.savePortfolio(user.uid, serializedData);
     }
@@ -118,19 +114,15 @@ export default function Dashboard({ user }) {
       if (user && user.uid && investor.current) {
         const savedData = await UserAuth.getUserPortfolio(user.uid);
 
-        // Check if they have multi-portfolio data saved
         if (
           savedData &&
           !Array.isArray(savedData) &&
           Object.keys(savedData).length > 0
         ) {
           for (const [pName, pData] of Object.entries(savedData)) {
-            // Check if portfolio exists to prevent React StrictMode double-mounting crash
             let p = investor.current.getPortfolio(pName);
-
             if (!p) {
               p = investor.current.createPortfolio(pName);
-
               if (pData.holdings) {
                 pData.holdings.forEach((data) => {
                   const rehydratedStock = new EquityStock(
@@ -144,7 +136,6 @@ export default function Dashboard({ user }) {
                 });
               }
               if (pData.history) {
-                // Convert plain JSON back into Transaction class objects
                 pData.history.forEach((txData) => {
                   const rehydratedTxn = new Transaction(
                     txData.stockSymbol,
@@ -163,7 +154,6 @@ export default function Dashboard({ user }) {
           setActiveTab(firstPortfolioName);
           syncUI(firstPortfolioName);
         } else {
-          // Brand new user: Check if Primary exists before creating
           if (!investor.current.getPortfolio("My Primary Portfolio")) {
             investor.current.createPortfolio("My Primary Portfolio");
           }
@@ -180,7 +170,6 @@ export default function Dashboard({ user }) {
     const marketInterval = setInterval(() => {
       if (!orderQueue.current.isEmpty()) {
         const order = orderQueue.current.dequeue();
-
         const targetP = investor.current.getPortfolio(order.targetPortfolio);
 
         if (targetP) {
@@ -245,11 +234,7 @@ export default function Dashboard({ user }) {
       alert("You cannot delete your primary portfolio.");
       return;
     }
-    if (
-      window.confirm(
-        `Are you sure you want to permanently delete the "${name}" portfolio? All stocks and transaction history will be lost.`,
-      )
-    ) {
+    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
       try {
         investor.current.deletePortfolio(name);
         setActiveTab("My Primary Portfolio");
@@ -299,24 +284,16 @@ export default function Dashboard({ user }) {
     const stocks = activeP.getStocks();
 
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += `Portfolio Report: ${activeTab}\n`;
-    csvContent += `Generated On: ${new Date().toLocaleString()}\n\n`;
-
+    csvContent += `Portfolio Report: ${activeTab}\nGenerated On: ${new Date().toLocaleString()}\n\n`;
     csvContent += "--- SUMMARY METRICS ---\n";
-    csvContent += `Total Invested,${metrics.invested.toFixed(2)}\n`;
-    csvContent += `Current Value,${metrics.currentValue.toFixed(2)}\n`;
-    csvContent += `Overall P/L (%),${metrics.profitLossPercent}%\n`;
-    csvContent += `Risk Level,${metrics.riskLevel}\n\n`;
-
-    csvContent += "--- CURRENT HOLDINGS ---\n";
-    csvContent += "Symbol,Shares,Avg Cost,Current Price\n";
+    csvContent += `Total Invested,${metrics.invested.toFixed(2)}\nCurrent Value,${metrics.currentValue.toFixed(2)}\nOverall P/L (%),${metrics.profitLossPercent}%\nRisk Level,${metrics.riskLevel}\n\n`;
+    csvContent +=
+      "--- CURRENT HOLDINGS ---\nSymbol,Shares,Avg Cost,Current Price\n";
     stocks.forEach((stock) => {
       csvContent += `${stock.symbol},${stock.quantity},${stock.purchasePrice.toFixed(2)},${stock.currentMarketPrice.toFixed(2)}\n`;
     });
-    csvContent += "\n";
-
-    csvContent += "--- TRANSACTION LEDGER ---\n";
-    csvContent += "Date,Type,Symbol,Quantity,Execution Price\n";
+    csvContent +=
+      "\n--- TRANSACTION LEDGER ---\nDate,Type,Symbol,Quantity,Execution Price\n";
     history.forEach((txn) => {
       const dateStr = new Date(txn.date).toLocaleString().replace(/,/g, "");
       csvContent += `${dateStr},${txn.type},${txn.stockSymbol},${txn.quantity},${txn.price.toFixed(2)}\n`;
@@ -334,100 +311,127 @@ export default function Dashboard({ user }) {
     document.body.removeChild(link);
   };
 
-  // 7. RENDER THE VIEW
+  // 7. RENDER THE VIEW (Responsive Mobile UI)
   return (
     <div
-      className="dashboard-container"
       style={{
-        padding: "20px",
-        fontFamily: "Arial, sans-serif",
-        maxWidth: "1200px",
+        padding: "clamp(16px, 3vw, 32px) clamp(12px, 2vw, 20px)",
+        maxWidth: "1280px",
         margin: "0 auto",
+        width: "100%",
+        overflowX: "hidden",
       }}
     >
       {/* MULTI-PORTFOLIO TABS UI */}
       <div
         style={{
           display: "flex",
-          gap: "10px",
-          marginBottom: "30px",
-          borderBottom: "2px solid #ccc",
-          paddingBottom: "15px",
+          gap: "12px",
+          marginBottom: "32px",
+          borderBottom: "1px solid var(--border-light)",
+          paddingBottom: "20px",
           alignItems: "center",
           flexWrap: "wrap",
         }}
       >
-        {portfolioList.map((name) => (
-          <div
-            key={name}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              backgroundColor: activeTab === name ? "#1a202c" : "#e2e8f0",
-              borderRadius: "4px",
-              overflow: "hidden",
-            }}
-          >
-            <button
-              onClick={() => {
-                setActiveTab(name);
-                syncUI(name);
-              }}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            flex: "1 1 auto",
+          }}
+        >
+          {portfolioList.map((name) => (
+            <div
+              key={name}
               style={{
-                padding: "10px 20px",
-                backgroundColor: "transparent",
-                color: activeTab === name ? "white" : "#1a202c",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: "bold",
+                display: "flex",
+                alignItems: "center",
+                backgroundColor:
+                  activeTab === name ? "var(--primary)" : "transparent",
+                borderRadius: "20px",
+                overflow: "hidden",
+                border:
+                  activeTab === name ? "none" : "1px solid var(--border-light)",
               }}
             >
-              {name}
-            </button>
-            {name !== "My Primary Portfolio" && (
               <button
-                onClick={() => handleDeletePortfolio(name)}
+                onClick={() => {
+                  setActiveTab(name);
+                  syncUI(name);
+                }}
                 style={{
-                  padding: "10px",
-                  backgroundColor: "#e53e3e",
-                  color: "white",
+                  padding: "8px 16px",
+                  backgroundColor: "transparent",
+                  color: activeTab === name ? "white" : "var(--text-muted)",
                   border: "none",
                   cursor: "pointer",
-                  fontWeight: "bold",
+                  fontWeight: "500",
+                  fontSize: "14px",
+                  whiteSpace: "nowrap",
                 }}
-                title="Delete Portfolio"
               >
-                X
+                {name}
               </button>
-            )}
-          </div>
-        ))}
+              {name !== "My Primary Portfolio" && (
+                <button
+                  onClick={() => handleDeletePortfolio(name)}
+                  style={{
+                    padding: "8px 12px",
+                    backgroundColor: "transparent",
+                    color: activeTab === name ? "#cbd5e1" : "var(--text-muted)",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                  title="Delete Portfolio"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
 
-        <div style={{ display: "flex", gap: "8px", marginLeft: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            width: "100%",
+            maxWidth: "300px",
+          }}
+        >
           <input
             type="text"
-            placeholder="New Portfolio Name"
+            placeholder="New Portfolio..."
             value={newPortfolioName}
             onChange={(e) => setNewPortfolioName(e.target.value)}
             style={{
-              padding: "10px",
-              borderRadius: "4px",
-              border: "1px solid #ccc",
+              flex: 1,
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-light)",
+              fontSize: "14px",
+              minWidth: "120px",
             }}
           />
           <button
             onClick={handleCreatePortfolio}
             style={{
-              padding: "10px 15px",
-              backgroundColor: "#4CAF50",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
+              padding: "8px 16px",
+              backgroundColor: "var(--bg-card)",
+              color: "var(--text-main)",
+              border: "1px solid var(--border-light)",
+              borderRadius: "8px",
               cursor: "pointer",
-              fontWeight: "bold",
+              fontWeight: "500",
+              fontSize: "14px",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
-            + Add Portfolio
+            + Add
           </button>
         </div>
       </div>
@@ -436,193 +440,261 @@ export default function Dashboard({ user }) {
       {alerts.length > 0 && (
         <div
           style={{
-            backgroundColor: "#fff3cd",
-            color: "#856404",
-            padding: "15px",
-            borderRadius: "4px",
-            marginBottom: "20px",
-            border: "1px solid #ffeeba",
+            backgroundColor: "var(--warning-bg)",
+            color: "var(--warning-text)",
+            padding: "16px",
+            borderRadius: "8px",
+            marginBottom: "24px",
+            border: "1px solid #fcd34d",
+            fontSize: "14px",
           }}
         >
-          <strong>⚠️ System Alerts for {activeTab}:</strong>
-          <ul style={{ margin: "10px 0 0 0", paddingLeft: "20px" }}>
+          <strong style={{ display: "block", marginBottom: "8px" }}>
+            ⚠️ System Alerts ({activeTab})
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: "24px" }}>
             {alerts.map((alert, index) => (
-              <li key={index}>{alert}</li>
+              <li key={index} style={{ marginBottom: "4px" }}>
+                {alert}
+              </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* PORTFOLIO SUMMARY WIDGET */}
+      {/* PORTFOLIO SUMMARY WIDGET (Responsive Grid) */}
       <div
-        className="metrics-card"
         style={{
-          border: "1px solid #ccc",
-          padding: "20px",
-          marginBottom: "20px",
-          borderRadius: "8px",
-          backgroundColor: "#f8f9fa",
-          display: "flex",
-          justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "16px",
+          marginBottom: "24px",
         }}
       >
-        <div>
-          <h4 style={{ margin: "0 0 10px 0", color: "#555" }}>
-            Total Invested
-          </h4>
-          <p style={{ fontSize: "24px", margin: 0, fontWeight: "bold" }}>
-            {formatINR(metrics.invested)}
-          </p>
-        </div>
-        <div>
-          <h4 style={{ margin: "0 0 10px 0", color: "#555" }}>Current Value</h4>
-          <p style={{ fontSize: "24px", margin: 0, fontWeight: "bold" }}>
-            {formatINR(metrics.currentValue)}
-          </p>
-        </div>
-        <div>
-          <h4 style={{ margin: "0 0 10px 0", color: "#555" }}>Overall P/L</h4>
-          <p
+        {[
+          {
+            label: "Total Invested",
+            value: formatINR(metrics.invested),
+            color: "var(--text-main)",
+          },
+          {
+            label: "Current Value",
+            value: formatINR(metrics.currentValue),
+            color: "var(--text-main)",
+          },
+          {
+            label: "Overall P/L",
+            value: `${metrics.profitLossPercent}%`,
+            color:
+              metrics.profitLossPercent >= 0
+                ? "var(--success)"
+                : "var(--danger)",
+          },
+          {
+            label: "Risk Level",
+            value: metrics.riskLevel,
+            color: "var(--primary)",
+          },
+        ].map((metric, i) => (
+          <div
+            key={i}
             style={{
-              fontSize: "24px",
-              margin: 0,
-              fontWeight: "bold",
-              color: metrics.profitLossPercent >= 0 ? "green" : "red",
+              backgroundColor: "var(--bg-card)",
+              padding: "20px",
+              borderRadius: "12px",
+              border: "1px solid var(--border-light)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
-            {metrics.profitLossPercent}%
-          </p>
-        </div>
-        <div>
-          <h4 style={{ margin: "0 0 10px 0", color: "#555" }}>Risk Level</h4>
-          <p style={{ fontSize: "20px", margin: 0 }}>{metrics.riskLevel}</p>
-        </div>
+            <h4
+              style={{
+                margin: "0 0 8px 0",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                fontWeight: "600",
+              }}
+            >
+              {metric.label}
+            </h4>
+            <p
+              style={{
+                fontSize: "clamp(20px, 4vw, 28px)",
+                margin: 0,
+                fontWeight: "700",
+                color: metric.color,
+              }}
+            >
+              {metric.value}
+            </p>
+          </div>
+        ))}
       </div>
 
       <div
         style={{
-          marginBottom: "20px",
+          marginBottom: "32px",
           display: "flex",
           justifyContent: "flex-end",
-          gap: "10px",
+          gap: "12px",
+          flexWrap: "wrap",
         }}
       >
         <button
           onClick={handleExportCSV}
           style={{
-            padding: "10px 20px",
-            backgroundColor: "#10b981",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
+            flex: "1 1 auto",
+            maxWidth: "200px",
+            padding: "10px 16px",
+            backgroundColor: "var(--bg-card)",
+            color: "var(--text-main)",
+            border: "1px solid var(--border-light)",
+            borderRadius: "8px",
             cursor: "pointer",
-            fontWeight: "bold",
+            fontWeight: "500",
+            fontSize: "14px",
+            boxShadow: "var(--shadow-sm)",
           }}
         >
-          📥 Download CSV Report
+          📥 Export CSV
         </button>
         <button
           onClick={handleRefreshMarketPrices}
           disabled={isRefreshing || holdings.length === 0}
           style={{
-            padding: "10px 20px",
-            backgroundColor:
-              isRefreshing || holdings.length === 0 ? "#ccc" : "#007bff",
+            flex: "1 1 auto",
+            maxWidth: "200px",
+            padding: "10px 16px",
+            backgroundColor: "var(--primary)",
             color: "white",
             border: "none",
-            borderRadius: "4px",
-            cursor:
-              isRefreshing || holdings.length === 0 ? "not-allowed" : "pointer",
-            fontWeight: "bold",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "500",
+            fontSize: "14px",
+            boxShadow: "var(--shadow-sm)",
+            opacity: isRefreshing || holdings.length === 0 ? 0.6 : 1,
           }}
         >
-          {isRefreshing ? "Fetching Live Data..." : "🔄 Refresh Market Prices"}
+          {isRefreshing ? "Fetching..." : "🔄 Refresh Market"}
         </button>
       </div>
 
-      {/* MAIN DASHBOARD LAYOUT */}
+      {/* MAIN DASHBOARD LAYOUT (Fluid Flexbox) */}
       <div
         style={{
           display: "flex",
-          gap: "20px",
+          gap: "24px",
           alignItems: "flex-start",
-          marginBottom: "30px",
+          marginBottom: "32px",
+          flexWrap: "wrap",
         }}
       >
-        <TradingTerminal
-          onPlaceOrder={handlePlaceOrder}
-          onUndo={handleUndoLastAction}
-          pendingOrders={pendingOrders}
-          isUndoDisabled={undoStack.current.isEmpty()}
-        />
-        {investor.current && (
-          <HoldingsTable
-            holdings={holdings}
-            portfolioInstance={investor.current.getPortfolio(activeTab)}
+        <div style={{ flex: "1 1 300px", width: "100%", minWidth: 0 }}>
+          <TradingTerminal
+            onPlaceOrder={handlePlaceOrder}
+            onUndo={handleUndoLastAction}
+            pendingOrders={pendingOrders}
+            isUndoDisabled={undoStack.current.isEmpty()}
           />
-        )}
+        </div>
+        <div style={{ flex: "2 1 500px", width: "100%", minWidth: 0 }}>
+          {investor.current && (
+            <HoldingsTable
+              holdings={holdings}
+              portfolioInstance={investor.current.getPortfolio(activeTab)}
+            />
+          )}
+        </div>
       </div>
 
       {/* TRANSACTION LEDGER */}
       <div
         style={{
-          border: "1px solid #ccc",
-          padding: "20px",
-          borderRadius: "8px",
-          backgroundColor: "#fff",
+          backgroundColor: "var(--bg-card)",
+          borderRadius: "12px",
+          border: "1px solid var(--border-light)",
+          boxShadow: "var(--shadow-sm)",
+          width: "100%",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Transaction Ledger ({activeTab})</h3>
-        {transactionHistory.length === 0 ? (
-          <p style={{ color: "#666" }}>
-            No transactions executed in this portfolio yet.
-          </p>
-        ) : (
-          <table
-            style={{
-              width: "100%",
-              textAlign: "left",
-              borderCollapse: "collapse",
-            }}
-          >
-            <thead>
-              <tr style={{ borderBottom: "2px solid #ddd" }}>
-                <th style={{ padding: "10px" }}>Date & Time</th>
-                <th>Transaction ID</th>
-                <th>Type</th>
-                <th>Symbol</th>
-                <th>Quantity</th>
-                <th>Execution Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactionHistory.map((txn) => (
-                <tr
-                  key={txn.transactionId}
-                  style={{ borderBottom: "1px solid #eee" }}
-                >
-                  <td style={{ padding: "10px" }}>
-                    {new Date(txn.date).toLocaleString()}
-                  </td>
-                  <td style={{ color: "#666", fontSize: "12px" }}>
-                    {txn.transactionId}
-                  </td>
-                  <td
-                    style={{
-                      fontWeight: "bold",
-                      color: txn.type === "BUY" ? "green" : "red",
-                    }}
-                  >
-                    {txn.type}
-                  </td>
-                  <td style={{ fontWeight: "bold" }}>{txn.stockSymbol}</td>
-                  <td>{txn.quantity}</td>
-                  <td>{formatINR(txn.price)}</td>
+        <div
+          style={{
+            padding: "20px",
+            borderBottom: "1px solid var(--border-light)",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "600" }}>
+            Transaction Ledger ({activeTab})
+          </h3>
+        </div>
+        <div
+          className="table-container"
+          style={{ overflowX: "auto", width: "100%" }}
+        >
+          {transactionHistory.length === 0 ? (
+            <div
+              style={{
+                padding: "40px",
+                textAlign: "center",
+                color: "var(--text-muted)",
+              }}
+            >
+              <p style={{ fontSize: "14px" }}>
+                No transactions executed in this portfolio yet.
+              </p>
+            </div>
+          ) : (
+            <table style={{ minWidth: "600px" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Date & Time</th>
+                  <th style={{ textAlign: "left" }}>Transaction ID</th>
+                  <th style={{ textAlign: "left" }}>Type</th>
+                  <th style={{ textAlign: "left" }}>Symbol</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Price</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {transactionHistory.map((txn) => (
+                  <tr key={txn.transactionId}>
+                    <td>{new Date(txn.date).toLocaleString()}</td>
+                    <td
+                      style={{ color: "var(--text-muted)", fontSize: "11px" }}
+                    >
+                      {txn.transactionId}
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          backgroundColor:
+                            txn.type === "BUY" ? "#f0fdf4" : "#fef2f2",
+                          color:
+                            txn.type === "BUY"
+                              ? "var(--success)"
+                              : "var(--danger)",
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {txn.type}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: "600" }}>{txn.stockSymbol}</td>
+                    <td style={{ textAlign: "right" }}>{txn.quantity}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {formatINR(txn.price)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
